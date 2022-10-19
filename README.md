@@ -12,6 +12,6 @@ which is then parsed incrementally such that the large buffer will only contain 
 
 This is a bit more work than just reading TCP into a buffer that probably extends the header size, but having a small read buffer plus a resizeable unparsed buffer has advantages.
  1. It doesn't allocate more memory than needed. A non-incremental parser would need to allocate a large buffer per request just to handle a few large requests. The alternative can be to extend the buffer if needed, but then the request has to be reparsed. If the next buffer is not large enough, the server can end up reparsing a large request several times until it finds the size.
- 2. It enables the unparsed buffer to grow and shrink as it is parsed, which enables the HTTP request to have a size larger than the disk size, given that some data can be dropped, or reduced, during fulfillment,
+ 2. It enables the unparsed buffer to grow and shrink as it is parsed, which enables the HTTP request to have a size larger than the disk size, given that some data can be dropped, or reduced, during fulfillment.
 
 Do I utilize this mechanism? No. But I sleep well at night knowing that my parser won't choke on a request that is larger than a pre-set buffer length.
