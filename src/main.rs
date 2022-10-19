@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
-use std::process::exit;
-use std::str::from_utf8;
 
 mod http;
 
@@ -25,24 +23,22 @@ fn serve() {
     let listener = match TcpListener::bind("127.0.0.1:80") {
         Err(why) => {
             eprintln!("{}", why);
-            exit(1);
+            panic!("Could not bind to address");
         }
         Ok(value) => value,
     };
     for stream in listener.incoming() {
         match stream {
             Ok(s) => handle_client(s),
-            Err(e) => eprintln!("{}", e),
+            Err(e) => eprintln!("Something is wrong witht the stream: {}", e),
         }
     }
-    println!("Listener {:?}", listener);
 }
 
 fn handle_client(mut stream: TcpStream) {
     if let Ok(request) = http::parse_heads(&mut stream) {
         println!("Got request: {:?}", request);
-        println!("Read body: {:?}", from_utf8(&request.read_body).unwrap())
     } else {
-        println!("there was an error parsing the request")
+        eprintln!("There was an error parsing the request")
     }
 }

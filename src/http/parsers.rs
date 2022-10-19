@@ -135,11 +135,11 @@ mod http_parsers {
     };
     use std::str::from_utf8;
 
-    pub fn space(i: &[u8]) -> IResult<&[u8], &[u8]> {
+    fn space(i: &[u8]) -> IResult<&[u8], &[u8]> {
         tag(b" ")(i)
     }
 
-    pub fn letters(i: &[u8]) -> IResult<&[u8], &str> {
+    fn letters(i: &[u8]) -> IResult<&[u8], &str> {
         map_res(alpha1, |s| std::str::from_utf8(s))(i)
     }
     pub fn url(i: &[u8]) -> IResult<&[u8], &str> {
