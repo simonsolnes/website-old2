@@ -3,15 +3,18 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 use std::process::exit;
-//use std::str::from_utf8;
+use std::str::from_utf8;
 
 #[derive(Debug)]
 #[allow(dead_code)]
-struct Request {
+struct Request<'a> {
     method: String,
     target: String,
     version: String,
     headers: HashMap<String, String>,
+
+    read_body: Vec<u8>,
+    unread_stream: &'a mut TcpStream,
 }
 
 fn main() {
@@ -19,7 +22,6 @@ fn main() {
 }
 
 fn serve() {
-    println!("Hello, wold!");
     let listener = match TcpListener::bind("127.0.0.1:80") {
         Err(why) => {
             eprintln!("{}", why);
@@ -37,14 +39,15 @@ fn serve() {
 }
 
 fn handle_client(mut stream: TcpStream) {
-    let (request, surplus) = parse_request_header(&mut stream);
-
-    println!("Got request: {:?}", request);
-    println!("surplus {:?}", surplus);
-    println!("stream is still: {:?}", stream);
+    if let Ok(request) = parse_request_header(&mut stream) {
+        println!("Got request: {:?}", request);
+        println!("Read body: {:?}", from_utf8(&request.read_body).unwrap())
+    } else {
+        println!("there was an error parsing the request")
+    }
 }
 
-fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
+fn parse_request_header(stream: &mut TcpStream) -> Result<Request, &str> {
     let mut acc = Vec::<u8>::new();
     const BUFFER_SIZE: usize = 4;
     let mut buffer = [0u8; BUFFER_SIZE];
@@ -57,7 +60,7 @@ fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
                     match http_parsers::parse_start_line(actual_read) {
                         Err(nom::Err::Incomplete(_)) => {
                             if read_bytes < BUFFER_SIZE {
-                                panic!("the request needs more")
+                                return Err("The request is incomplete");
                             }
                             acc.extend_from_slice(actual_read)
                         }
@@ -68,14 +71,17 @@ fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
                     match http_parsers::parse_start_line(&acc) {
                         Err(nom::Err::Incomplete(_)) => {
                             if read_bytes < BUFFER_SIZE {
-                                panic!("the request needs more")
+                                return Err("The request is incomplete");
                             }
                         }
                         any @ _ => break any,
                     }
                 }
             }
-            e @ Err(_) => panic!("error: {:?}", e),
+            e @ Err(_) => {
+                println!("Socket read error {:?}", e);
+                return Err("Socket read error");
+            }
         }
     };
     let mut acc: Vec<u8>;
@@ -84,7 +90,7 @@ fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
             acc = surplus.to_vec();
             parsed_http_title
         }
-        e @ _ => panic!("invalid title {:?}", e),
+        _ => return Err("The HTTP title could not be parsed"),
     };
 
     let mut headers = HashMap::<String, String>::new();
@@ -97,7 +103,7 @@ fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
             match http_parsers::parse_header(&acc) {
                 Ok((surplus, (key, value))) => {
                     if let Some(_) = headers.insert(key.to_string(), value.to_string()) {
-                        panic!("identical keys in header");
+                        return Err("Identical keys in header");
                     }
                     acc = surplus.to_vec();
                 }
@@ -108,9 +114,7 @@ fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
                     done_with_headers = true;
                     break;
                 }
-                e @ _ => {
-                    panic!("fisk {:?}", e);
-                }
+                _ => return Err("Could not parse a spesific header"),
             }
         }
         if done_with_headers {
@@ -121,22 +125,24 @@ fn parse_request_header(stream: &mut TcpStream) -> (Request, Vec<u8>) {
                 let actual_read = &buffer[..read_bytes];
                 acc.extend_from_slice(actual_read);
             }
-            e @ Err(_) => panic!("error: {:?}", e),
+            e @ Err(_) => {
+                println!("Socket read error {:?}", e);
+                return Err("Socket read error");
+            }
         }
     }
 
-    (
-        {
-            let (method, target, version) = start_line;
-            Request {
-                method,
-                target,
-                version,
-                headers,
-            }
-        },
-        acc,
-    )
+    Ok({
+        let (method, target, version) = start_line;
+        Request {
+            method,
+            target,
+            version,
+            headers,
+            read_body: acc,
+            unread_stream: stream,
+        }
+    })
 }
 
 mod http_parsers {
