@@ -49,9 +49,10 @@ fn handle_client(mut stream: TcpStream) {
 
 fn parse_request_header(stream: &mut TcpStream) -> Result<Request, &str> {
     let mut acc = Vec::<u8>::new();
-    const BUFFER_SIZE: usize = 4;
+    const BUFFER_SIZE: usize = 1;
     let mut buffer = [0u8; BUFFER_SIZE];
 
+    // Parsing the GET / HTTP/1.1
     let parsed_start_line: Result<(&[u8], (String, String, String)), nom::Err<Error<&[u8]>>> = loop {
         match stream.read(&mut buffer) {
             Ok(read_bytes) => {
@@ -84,7 +85,9 @@ fn parse_request_header(stream: &mut TcpStream) -> Result<Request, &str> {
             }
         }
     };
+
     let mut acc: Vec<u8>;
+
     let start_line = match parsed_start_line {
         Ok((surplus, parsed_http_title)) => {
             acc = surplus.to_vec();
@@ -93,8 +96,8 @@ fn parse_request_header(stream: &mut TcpStream) -> Result<Request, &str> {
         _ => return Err("The HTTP title could not be parsed"),
     };
 
+    // Parsing headers
     let mut headers = HashMap::<String, String>::new();
-
     let mut buffer = [0u8; BUFFER_SIZE];
 
     loop {
@@ -130,6 +133,25 @@ fn parse_request_header(stream: &mut TcpStream) -> Result<Request, &str> {
                 return Err("Socket read error");
             }
         }
+    }
+
+    // Parsing header/body divider \r\n
+
+    while acc.len() < 2 {
+        match stream.read(&mut buffer) {
+            Ok(read_bytes) => {
+                let actual_read = &buffer[..read_bytes];
+                acc.extend_from_slice(actual_read);
+            }
+            e @ Err(_) => {
+                println!("Socket read error {:?}", e);
+                return Err("Socket read error");
+            }
+        }
+    }
+    match http_parsers::parse_divider(&acc) {
+        Ok((surplus, _)) => acc = surplus.to_vec(),
+        _ => return Err("Could not read divider (last \r\n)"),
     }
 
     Ok({
@@ -190,5 +212,8 @@ mod http_parsers {
             ),
             tag("\r\n"),
         )(i)
+    }
+    pub fn parse_divider(i: &[u8]) -> IResult<&[u8], &[u8]> {
+        tag(b"\r\n")(i)
     }
 }

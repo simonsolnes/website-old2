@@ -14,3 +14,5 @@ This is a bit more work that just reading TCP into a buffer that will probably e
 but it enables the TCP read buffer to be of any length,
 which in turn enables the HTTP request to have a size larger than the disk size,
 given that some data can be dropped, or reduced, during fulfillment.
+
+Do I utilize this mechanism? No. But I sleep well at night knowing that my parser won't choke on a request that is larger than a pre-set buffer length.
