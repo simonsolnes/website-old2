@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 
 mod http;
+mod url;
 
 #[derive(Debug)]
 #[allow(dead_code)]
