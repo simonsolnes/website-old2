@@ -1,3 +1,4 @@
+use nom::error::Error;
 ///
 ///  protocol    password       port  query-parameters        
 ///     │           │            │          │                 
@@ -25,7 +26,7 @@ type Query = HashMap<String, String>;
 
 #[derive(PartialEq, Debug)]
 enum Target {
-    Origin(Absolute<Path>, Option<Query>),
+    Origin(Absolute<Path>, Query),
     Absolute(URI),
     Authority(Host),
     Asterix,
@@ -48,10 +49,10 @@ struct Host {}
 
 use nom::branch::alt;
 use nom::bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1};
-use nom::character::complete::{anychar, char, one_of};
+use nom::character::complete::{anychar, char, one_of, satisfy};
 use nom::combinator::{all_consuming, eof, map, not, opt, peek, recognize};
 use nom::multi::{many1, separated_list0};
-use nom::sequence::{preceded, terminated};
+use nom::sequence::{preceded, terminated, tuple};
 
 pub trait Parsable {
     type Output;
@@ -84,14 +85,21 @@ fn is_url_terminative(c: char) -> bool {
     use ascii_charsets::{CONTROL, URL_ILLEGAL};
     c.is_ascii() && (URL_ILLEGAL.contains(c) || CONTROL.contains(c))
 }
+fn end(i: &str) -> IResult<&str, ()> {
+    match eof::<&str, ()>(i) {
+        Ok(_) => Ok((i, ())),
+        Err(_) => match satisfy::<_, _, ()>(is_url_terminative)(i) {
+            Ok(_) => Ok((i, ())),
+            Err(_) => Err(nom::Err::Error(Error {
+                input: i,
+                code: nom::error::ErrorKind::Permutation,
+            })),
+        },
+    }
+}
 
 /// Reseved characters
 /// https://www.rfc-editor.org/rfc/rfc3986#section-2.2
-fn end(i: &str) -> IResult<&str, &str> {
-    alt((eof, recognize(char(' '))))(i)
-}
-const GEN_DELIMS: &str = ":/?#[]@";
-const SUB_DELIMS: &str = "!$&'()*+,;=";
 
 // impl Parsable for Query {
 //     type Output = Query;
@@ -132,8 +140,8 @@ impl Parsable for Target {
     type Output = Self;
     fn nom_parse(i: &str) -> IResult<&str, Self> {
         alt((
-            map(terminated(char('*'), peek(end)), |_| Self::Asterix),
-            map(terminated(char('*'), peek(end)), |_| Self::Asterix),
+            map(tuple((char('*'), end)), |_| Self::Asterix),
+            map(tuple((char('*'), end)), |_| Self::Asterix),
         ))(i)
     }
 }
@@ -198,7 +206,7 @@ mod tests {
         assert_eq!(Target::nom_parse("* "), Ok((" ", Target::Asterix)));
     }
     #[test]
-    fn test_target_invalid() {
+    fn test_target_asterix_invalid() {
         assert!(Target::parse("*s").is_err());
     }
 }
