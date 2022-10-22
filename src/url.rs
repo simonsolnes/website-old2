@@ -16,6 +16,7 @@ use nom::error::Error;
 #[allow(dead_code)]
 #[allow(unused_variables)]
 use nom::IResult;
+use nom::Parser;
 use std::collections::HashMap;
 
 /// Uri syntax components
@@ -69,6 +70,10 @@ pub trait Parsable {
     }
 }
 
+fn percent_decode(i: &str) -> String {
+    i.to_string()
+}
+
 /// Contains all characters in ascii, separated into url charsets
 #[allow(dead_code)]
 mod ascii_charsets {
@@ -91,6 +96,7 @@ fn is_url_terminative(c: char) -> bool {
     use ascii_charsets::{CONTROL, URL_ILLEGAL};
     c.is_ascii() && (URL_ILLEGAL.contains(c) || CONTROL.contains(c))
 }
+
 fn url_end(i: &str) -> IResult<&str, ()> {
     match eof::<&str, ()>(i) {
         Ok(_) => Ok((i, ())),
@@ -137,7 +143,7 @@ impl Parsable for Relative<Path> {
                 let (stripped, _) = take_maybe_leading_slash(sur)?;
                 Ok((stripped, res))
             },
-            |r| Relative(r.iter().map(|i: &&str| (*i).to_string()).collect()),
+            |r| Relative(r.iter().map(|i: &&str| percent_decode(*i)).collect()),
         )(i)
     }
 }
@@ -186,7 +192,7 @@ impl Parsable for Query {
             |l: Vec<(&str, &str)>| {
                 let mut map: HashMap<String, String> = HashMap::new();
                 for (key, val) in l {
-                    map.insert(key.to_string(), val.to_string());
+                    map.insert(percent_decode(key), percent_decode(val));
                 }
                 map
             },
