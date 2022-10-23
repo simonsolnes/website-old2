@@ -18,6 +18,7 @@ use nom::error::Error;
 use nom::IResult;
 use nom::Parser;
 use std::collections::HashMap;
+use std::str::Utf8Error;
 
 /// Uri syntax components
 /// https://www.rfc-editor.org/rfc/rfc3986#section-3
@@ -49,10 +50,12 @@ struct URI {}
 struct Host {}
 
 use nom::branch::alt;
-use nom::bytes::complete::{is_not, tag, take_till, take_until, take_while, take_while1};
+use nom::bytes::complete::{is_not, tag, take, take_till, take_until, take_while, take_while1};
 use nom::character::complete::{anychar, char, one_of, satisfy};
-use nom::combinator::{all_consuming, eof, map, not, opt, peek, recognize, success};
-use nom::multi::{many1, separated_list0, separated_list1};
+use nom::combinator::{
+    all_consuming, cut, eof, map, map_parser, map_res, not, opt, peek, recognize, success,
+};
+use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{preceded, separated_pair, terminated, tuple};
 
 pub trait Parsable {
@@ -68,10 +71,6 @@ pub trait Parsable {
             }
         }
     }
-}
-
-fn percent_decode(i: &str) -> String {
-    i.to_string()
 }
 
 /// Contains all characters in ascii, separated into url charsets
@@ -92,9 +91,18 @@ mod ascii_charsets {
     pub const URL_ILLEGAL: &'static str = " \"<>\\^`}{|";
 }
 
+/// Function returns true if c is contained in ascii and in either of these:
+/// `CONTROL`: Invisible characters
+/// `GEN_DELIMS`: General delimiters
+/// `SUB_DELIMS`: Sub delimiters
+/// `URL_ILLEGAL`: Illegal characters that will stop url parse
 fn is_url_terminative(c: char) -> bool {
-    use ascii_charsets::{CONTROL, URL_ILLEGAL};
-    c.is_ascii() && (URL_ILLEGAL.contains(c) || CONTROL.contains(c))
+    let c = c as u32;
+    c < 128
+        && c > 47
+        && ((c > 57 && c < 65) || c == 96 || (c > 90 && c < 95) || c > 122 && c != 126)
+        || c < 45
+        || c == 47
 }
 
 fn url_end(i: &str) -> IResult<&str, ()> {
@@ -108,6 +116,37 @@ fn url_end(i: &str) -> IResult<&str, ()> {
             })),
         },
     }
+}
+fn percent_decode(i: &str) -> IResult<&str, String> {
+    map(
+        many1(alt((
+            // UTF-8 encoded text
+            map(take_while1(|c: char| !is_url_terminative(c)), |s: &str| {
+                s.to_string()
+            }),
+            // Convert '+' to space
+            map(char('+'), |_| " ".to_string()),
+            // Percent encoding to UTF-8
+            map_res(
+                map_parser(
+                    many1(preceded(char('%'), cut(take(2_usize)))),
+                    |h: Vec<&str>| match h
+                        .iter()
+                        .map(|hs| u8::from_str_radix(*hs, 16))
+                        .collect::<Result<Vec<u8>, std::num::ParseIntError>>()
+                    {
+                        Ok(r) => Ok((vec![], r)),
+                        Err(_) => Err(nom::Err::Failure(nom::error::Error {
+                            input: i,
+                            code: nom::error::ErrorKind::Permutation,
+                        })),
+                    },
+                ),
+                |s| -> Result<String, Utf8Error> { Ok(std::str::from_utf8(&s)?.to_string()) },
+            ),
+        ))),
+        |r| r.join(""),
+    )(i)
 }
 
 /// Reseved characters
@@ -131,20 +170,12 @@ impl Parsable for Target {
 impl Parsable for Relative<Path> {
     type Output = Relative<Path>;
     fn nom_parse<'a>(i: &'a str) -> IResult<&str, Relative<Path>> {
-        map(
-            |i| {
-                fn take_maybe_leading_slash(i: &str) -> IResult<&str, Option<char>> {
-                    opt(char('/'))(i)
-                }
-                let (sur, res) = separated_list0(
-                    char('/'),
-                    take_while1(|c| c != '/' && c != '?' && c != ';' && !is_url_terminative(c)),
-                )(i)?;
-                let (stripped, _) = take_maybe_leading_slash(sur)?;
-                Ok((stripped, res))
-            },
-            |r| Relative(r.iter().map(|i: &&str| percent_decode(*i)).collect()),
-        )(i)
+        fn take_maybe_leading_slash(i: &str) -> IResult<&str, Option<char>> {
+            opt(char('/'))(i)
+        }
+        let (sur, res) = separated_list0(char('/'), percent_decode)(i)?;
+        let (stripped, _) = take_maybe_leading_slash(sur)?;
+        Ok((stripped, Relative(res)))
     }
 }
 
@@ -182,20 +213,10 @@ impl Parsable for Query {
                 char('?'),
                 separated_list1(
                     char('&'),
-                    separated_pair(
-                        take_while1(|c| c != '=' && c != '&' && !is_url_terminative(c)),
-                        char('='),
-                        take_while1(|c| c != '=' && c != '&' && !is_url_terminative(c)),
-                    ),
+                    separated_pair(percent_decode, char('='), percent_decode),
                 ),
             ),
-            |l: Vec<(&str, &str)>| {
-                let mut map: HashMap<String, String> = HashMap::new();
-                for (key, val) in l {
-                    map.insert(percent_decode(key), percent_decode(val));
-                }
-                map
-            },
+            |l: Vec<(String, String)>| l.into_iter().collect(),
         )(i)
     }
 }
@@ -204,12 +225,15 @@ impl Parsable for Query {
 mod tests {
 
     use super::*;
-    // use std::mem::discriminant;
 
-    // fn assert_is_failure<T>(result: Result) {
-    //     assert_eq!(discriminant(&result), discriminant(&Err));
-    // }
-
+    #[test]
+    fn test_percent_decode() {
+        let input1 = "stf%C2%A8%C3%92%C2%A8%C3%94%E2%80%A1%EF%AC%82%E2%80%BA%EF%AC%81%C2%B0%C2%B0%EF%AC%81%EF%AC%81%E2%88%8F%CB%9D%CB%87%C3%8E%C3%8E%C3%93";
+        let expected1 = "stf¨Ò¨Ô‡ﬂ›ﬁ°°ﬁﬁ∏˝ˇÎÎÓ".to_string();
+        let (_, result1) = percent_decode(input1).unwrap();
+        assert_eq!(result1, expected1);
+        assert!(percent_decode("fÔes%C2%A8mk%e").is_err());
+    }
     #[test]
     fn test_relative_path() {
         assert_eq!(Relative::<Path>::parse("").unwrap(), Relative(vec![]));
