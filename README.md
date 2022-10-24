@@ -15,3 +15,22 @@ This is a bit more work than just reading TCP into a buffer that probably extend
  2. It enables the unparsed buffer to grow and shrink as it is parsed, which enables the HTTP request to have a size larger than the disk size, given that parts of the request can be dropped, or reduced, during fulfillment.
 
 Is this mechanism need? Maybe in production, but not in this project. However, I sleep well at night knowing that my parser won't choke on a request that is larger than a pre-set buffer length.
+
+## URL/IRI-parser
+*Note:* The term URL and URI is being used interchangably here.
+If you want to learn the difference between URI, URL, URN and IRI, I **strongly** advice you to **not** web seach it.
+The web is littered with inaccurate, false and confusing explanations. Just go straight to the source; they explain it accuately and pretty well.
+- [RFC 3986 URI](https://www.rfc-editor.org/rfc/rfc3986)
+- [RFC 1738 URL](https://www.rfc-editor.org/rfc/rfc1738)
+- [RFC 2141 URN](https://www.rfc-editor.org/rfc/rfc2141)
+
+IRI is a replacement of URI, with support for unicode. The spesification is pretty simple; any non-ASCII unicode characters are valid.
+This is because only ASCII characters can innterrupt the flow of URL parsing, such as `:`, `?`, `space` or `\\n`.
+
+The URI spesification with its percent encoding, optional stuff and several edge-cases, was a lot more complicated to implement than the HTTP spec.
+Thankfully, with parser combinators, it was very easy to declare the induvidual components and combinate them into a parse tree to get the final parser.
+
+Since IRI's are UTF-8 encoded, I created an IRI parser that parses the URL with unicode codepoints and then did the UTF-8 decoding per sub-component.
+This was for efficiency, since its cheaper to compare `u8`s than `u32`. It was unnecessarily cumbersome,
+and would result in not being able to parse URLs that are alerady encoded as unicode string.
+Therefore the current parser does the UTF-8 decoding first, and then the URL parse with percent encoding.
