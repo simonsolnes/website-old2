@@ -1,22 +1,11 @@
+use nom::branch::alt;
+use nom::bytes::complete::{take, take_while1};
+use nom::character::complete::{char, satisfy};
+use nom::combinator::{cut, eof, map, map_parser, map_res, opt, success};
 use nom::error::Error;
-///
-///  protocol    password       port  query-parameters        
-///     │           │            │          │                 
-///     │   username│   hostname │pathname  │   fragment      
-///     │      │    │      │     │   │      │    │            
-///    ┌┴─┐   ┌┴─┐ ┌┴─┐ ┌──┴───┐ ├┐┌─┴──┐ ┌─┴─┐ ┌┴─┐          
-///    http://user:pass@site.com:80/pa/th?q=val&s=x#hash          
-///    │                └────┬────┘└────┬─────┘    │          
-///    │                    host       path        │          
-///    └───────────────────┬───────────────────────┘          
-///                        │                                  
-///                       href                                
-///
-
-#[allow(dead_code)]
-#[allow(unused_variables)]
+use nom::multi::{many1, separated_list0, separated_list1};
+use nom::sequence::{preceded, separated_pair, tuple};
 use nom::IResult;
-use nom::Parser;
 use std::collections::HashMap;
 use std::str::Utf8Error;
 
@@ -26,6 +15,7 @@ use std::str::Utf8Error;
 type Path = Vec<String>;
 type Query = HashMap<String, String>;
 
+/// The target in a HTTP requeest can be any of these types
 #[derive(PartialEq, Debug)]
 enum Target {
     Origin(Absolute<Path>, Option<Query>),
@@ -49,15 +39,6 @@ struct URI {}
 #[derive(PartialEq, Debug)]
 struct Host {}
 
-use nom::branch::alt;
-use nom::bytes::complete::{is_not, tag, take, take_till, take_until, take_while, take_while1};
-use nom::character::complete::{anychar, char, one_of, satisfy};
-use nom::combinator::{
-    all_consuming, cut, eof, map, map_parser, map_res, not, opt, peek, recognize, success,
-};
-use nom::multi::{many0, many1, separated_list0, separated_list1};
-use nom::sequence::{preceded, separated_pair, terminated, tuple};
-
 pub trait Parsable {
     type Output;
     fn nom_parse(i: &str) -> IResult<&str, Self::Output>;
@@ -65,15 +46,14 @@ pub trait Parsable {
     fn parse(i: &str) -> Result<Self::Output, ()> {
         match Self::nom_parse(i) {
             Ok((_, result)) => Ok(result),
-            Err(_) => {
-                eprintln!("parse error");
-                Err(())
-            }
+            Err(_) => Err(()),
         }
     }
 }
 
 /// Contains all characters in ascii, separated into url charsets
+/// Reseved characters
+/// https://www.rfc-editor.org/rfc/rfc3986#section-2.2
 #[allow(dead_code)]
 mod ascii_charsets {
     pub const NUMERIC: &'static str = "0123456789";
@@ -91,7 +71,7 @@ mod ascii_charsets {
     pub const URL_ILLEGAL: &'static str = " \"<>\\^`}{|";
 }
 
-/// Function returns true if c is contained in ascii and in either of these:
+/// Returns true if c is contained in ascii and in either of these:
 /// `CONTROL`: Invisible characters
 /// `GEN_DELIMS`: General delimiters
 /// `SUB_DELIMS`: Sub delimiters
@@ -105,6 +85,7 @@ fn is_url_terminative(c: char) -> bool {
         || c == 47
 }
 
+// Succeeds if url end is met
 fn url_end(i: &str) -> IResult<&str, ()> {
     match eof::<&str, ()>(i) {
         Ok(_) => Ok((i, ())),
@@ -117,6 +98,8 @@ fn url_end(i: &str) -> IResult<&str, ()> {
         },
     }
 }
+
+// Decodes percent url encoding
 fn percent_decode(i: &str) -> IResult<&str, String> {
     map(
         many1(alt((
@@ -149,20 +132,15 @@ fn percent_decode(i: &str) -> IResult<&str, String> {
     )(i)
 }
 
-/// Reseved characters
-/// https://www.rfc-editor.org/rfc/rfc3986#section-2.2
-
-// impl Parsable for Query {
-//     type Output = Query;
-//     fn nom_parse<'a>(i: &'a str) -> IResult<&str, Query> {}
-// }
-
 impl Parsable for Target {
     type Output = Self;
     fn nom_parse(i: &str) -> IResult<&str, Self> {
         alt((
             map(tuple((char('*'), url_end)), |_| Self::Asterix),
-            map(tuple((char('*'), url_end)), |_| Self::Asterix),
+            map(
+                tuple((Absolute::<Path>::nom_parse, Option::<Query>::nom_parse)),
+                |(path, query)| Self::Origin(path, query),
+            ),
         ))(i)
     }
 }
@@ -225,6 +203,19 @@ impl Parsable for Query {
 mod tests {
 
     use super::*;
+    #[test]
+    fn test_target_origin() {
+        assert_eq!(
+            Target::parse("/").unwrap(),
+            Target::Origin(Absolute(vec![]), None)
+        );
+        assert_eq!(
+            Target::parse("/%20").unwrap(),
+            Target::Origin(Absolute(vec![" ".to_string()]), None)
+        );
+        println!("HHEE");
+        //assert!(false);
+    }
 
     #[test]
     fn test_percent_decode() {
@@ -233,6 +224,7 @@ mod tests {
         let (_, result1) = percent_decode(input1).unwrap();
         assert_eq!(result1, expected1);
         assert!(percent_decode("fÔes%C2%A8mk%e").is_err());
+        assert!(percent_decode("fÔes%C2%A8mk%eka").is_err());
     }
     #[test]
     fn test_relative_path() {
