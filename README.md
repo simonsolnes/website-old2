@@ -28,8 +28,8 @@ IRI is a replacement of URI, with support for unicode. The spesification is pret
 This is because only ASCII characters can innterrupt the flow of URL parsing, such as `:`, `?`, `space` or `\\n`.
 
 The URI spesification with its percent encoding, optional stuff and several edge-cases, was a lot more complicated to implement than the HTTP spec.
-Thankfully, with parser combinators, it was very easy to declare the induvidual components and combinate them into a parse tree to get the final parser.
-IRI as very easy to support. IRIs are very easy to support. First decode as UTF-8 and then parse URL as a string rather than `[b]`.
+Using parser combinators made the process structured, than just trying to parse by hand.
+IRIs are very easy to support. First decode as UTF-8 and then parse URL as a string rather than `[u8]`.
 
 Since this requires seeking over the text twice, my first implementation skips the first step
 and parses the URL as unicode codepoints and then do the UTF-8 decoding per sub-component. It's less comparisons, and it's cheaper to compare `u8`s than `u32`.
