@@ -29,8 +29,12 @@ This is because only ASCII characters can innterrupt the flow of URL parsing, su
 
 The URI spesification with its percent encoding, optional stuff and several edge-cases, was a lot more complicated to implement than the HTTP spec.
 Thankfully, with parser combinators, it was very easy to declare the induvidual components and combinate them into a parse tree to get the final parser.
+IRI as very easy to support. IRIs are very easy to support. First decode as UTF-8 and then parse URL as a string rather than `[b]`.
 
-Since IRI's are UTF-8 encoded, I created an IRI parser that parses the URL with unicode codepoints and then did the UTF-8 decoding per sub-component.
-This was for efficiency, since its cheaper to compare `u8`s than `u32`. It was unnecessarily cumbersome,
-and would result in not being able to parse URLs that are alerady encoded as unicode string.
+Since this requires seeking over the text twice, my first implementation skips the first step
+and parses the URL as unicode codepoints and then do the UTF-8 decoding per sub-component. It's less comparisons, and it's cheaper to compare `u8`s than `u32`.
+This works because UTF-8 is a superset of the ASCII character set.
+ASCII is a 7 bit encoding, so if the first bit is `0` it's an ASCII character, and If the first bit is `1`, the URL parser can ignore it, and apply a UTF-8 decoder on the result.
+
+It was unnecessarily cumbersome, and would result in not being able to parse URLs that are alerady encoded as unicode string.
 Therefore the current parser does the UTF-8 decoding first, and then the URL parse with percent encoding.
