@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 
 mod http;
+mod json;
+mod parse;
 mod url;
 
 #[derive(Debug)]

@@ -5,6 +5,3 @@ edition = "2021"
 
 [dependencies]
 nom = "7.*"
-
-[dependencies.parse]
-path = "parse"

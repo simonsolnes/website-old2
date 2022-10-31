@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 
-use parse::comb::either_of;
-use parse::comb::{either, map, optional, result, result_halt};
-use parse::repeat::repeat_any;
-use parse::repeat::separated_items;
-use parse::sequence::{around, between, preceded, serial, serial3, serial4};
-use parse::str::{char, char_of, literal, other_than, pop, take, take_any_while, take_some_while};
-use parse::tools::halt;
-use parse::Parse;
+use crate::parse::comb::either_of;
+use crate::parse::comb::{either, map, optional, result, result_halt};
+use crate::parse::repeat::repeat_any;
+use crate::parse::repeat::separated_items;
+use crate::parse::sequence::{around, between, preceded, serial, serial3, serial4};
+use crate::parse::str::{
+    char, char_of, literal, other_than, pop, take, take_any_while, take_some_while,
+};
+use crate::parse::tools::halt;
+use crate::parse::Parse;
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub enum JSON {
     UnsignedInt(usize),
     SignedInt(isize),
@@ -19,6 +21,12 @@ pub enum JSON {
     Null,
     Object(HashMap<String, JSON>),
     Array(Vec<JSON>),
+}
+
+impl JSON {
+    fn parse(input: &str) -> Parse<&str, JSON> {
+        either(object, array)(input)
+    }
 }
 
 fn whitespace(i: &str) -> Parse<&str, &str> {
@@ -58,7 +66,7 @@ fn array(i: &str) -> Parse<&str, JSON> {
     )(i)
 }
 
-pub fn object(i: &str) -> Parse<&str, JSON> {
+fn object(i: &str) -> Parse<&str, JSON> {
     between(
         char('{'),
         map(
@@ -213,22 +221,42 @@ fn string(i: &str) -> Parse<&str, JSON> {
         |s| JSON::String(s.join("")),
     )(i)
 }
-#[test]
-fn test_null() {
-    println!("{:?}", null("null"));
-    assert!(true);
-}
-#[test]
-fn test_bool() {
-    assert_eq!(bool("truem"), Parse::Success(JSON::Bool(true), "m"));
-    assert_eq!(bool("false"), Parse::Success(JSON::Bool(false), ""));
-    assert!(bool("s").is_err());
-}
 
-#[test]
-fn test_object() {
-    println!(
-        "{:?}",
-        object("{\"something\": false, \"something else\": [true, false, \"hello\", 3, {\"fisk\": 3}]}")
-    );
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_null() {
+        println!("{:?}", null("null"));
+        assert!(true);
+    }
+
+    #[test]
+    fn test_bool() {
+        assert_eq!(bool("truem"), Parse::Success(JSON::Bool(true), "m"));
+        assert_eq!(bool("false"), Parse::Success(JSON::Bool(false), ""));
+        assert!(bool("s").is_err());
+    }
+
+    #[test]
+    fn test_object() {
+        let mut expected = HashMap::new();
+        expected.insert("something".to_string(), JSON::Bool(false));
+        let mut fisk = HashMap::new();
+        fisk.insert("fisk".to_string(), JSON::UnsignedInt(3));
+        expected.insert(
+            "something else".to_string(),
+            JSON::Array(vec![
+                JSON::Bool(true),
+                JSON::Bool(false),
+                JSON::String("hello".to_string()),
+                JSON::UnsignedInt(3),
+                JSON::Object(fisk),
+            ]),
+        );
+
+        let result = object("{\"something\": false, \"something else\": [true, false, \"hello\", 3, {\"fisk\": 3}]}");
+        assert_eq!(result, Parse::Success(JSON::Object(expected), ""));
+    }
 }
