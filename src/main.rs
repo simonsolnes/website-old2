@@ -1,3 +1,4 @@
+use parse::str::literal;
 use std::collections::HashMap;
 use std::net::{TcpListener, TcpStream};
 
@@ -17,7 +18,8 @@ pub struct Request<'a> {
 }
 
 fn main() {
-    serve();
+    println!("{:?}", literal("fisk")("fiske"));
+    //serve();
 }
 
 fn serve() {
