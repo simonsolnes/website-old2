@@ -11,7 +11,7 @@ use crate::parse::str::{
 use crate::parse::tools::halt;
 use crate::parse::Parse;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum JSON {
     UnsignedInt(usize),
     SignedInt(isize),
