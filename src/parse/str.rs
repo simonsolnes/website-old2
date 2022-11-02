@@ -73,7 +73,11 @@ pub fn take(num: usize) -> impl Fn(&str) -> Parse<&str, &str> {
             if let Some((i, _)) = iter.next() {
                 index = i;
             } else {
-                return Parse::Limit(Some(&input[..index]), &input[index..]);
+                return if num == count {
+                    Parse::Success(input, "")
+                } else {
+                    Parse::Limit(Some(input), "")
+                };
             }
             if count == num {
                 break;
@@ -103,7 +107,7 @@ where
                     break;
                 }
             } else {
-                return Parse::Limit(Some(&input[..index]), &input[index..]);
+                return Parse::Limit(Some(input), "");
             }
         }
         let res = &input[0..index];
