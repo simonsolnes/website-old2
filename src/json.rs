@@ -6,7 +6,7 @@ use crate::parse::repeat::repeat_any;
 use crate::parse::repeat::separated_items;
 use crate::parse::sequence::{around, between, preceded, serial, serial3, serial4};
 use crate::parse::str::{
-    char, char_of, literal, other_than, pop, take, take_any_while, take_some_while,
+    char, char_of, literal, other_than, pop, take, take_some_while, take_while,
 };
 use crate::parse::tools::halt;
 use crate::parse::Parse;
@@ -30,7 +30,7 @@ impl JSON {
 }
 
 fn whitespace(i: &str) -> Parse<&str, &str> {
-    take_any_while(|c| match c as u32 {
+    take_while(|c| match c as u32 {
         0x0020 => true, // Space
         0x000A => true, // LF
         0x000D => true, // CR
@@ -105,7 +105,7 @@ fn number(i: &str) -> Parse<&str, JSON> {
                 map(
                     serial(
                         char_of("123456789"),
-                        take_any_while(|c| "0123456789".contains(c)),
+                        take_while(|c| "0123456789".contains(c)),
                     ),
                     |(a, b)| format!("{a}{b}"),
                 ),

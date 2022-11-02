@@ -60,6 +60,19 @@ pub mod str {
     use super::comb::result;
     use super::Parse;
 
+    const ASCII_ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    pub fn alpha_char<'a>(i: &'a str) -> impl Fn(&'a str) -> Parse<&'a str, char> {
+        result(
+            pop,
+            |c| match ASCII_ALPHABET.contains(c) {
+                true => Ok(c),
+                false => Err(()),
+            },
+            "is not in alphabet",
+        )
+    }
+
     pub fn pop(input: &str) -> Parse<&str, char> {
         let mut iter = input.char_indices();
         match iter.next() {
@@ -73,6 +86,14 @@ pub mod str {
             None => Parse::Deficient(None),
         }
     }
+
+    pub fn peek_char(input: &str) -> Parse<&str, char> {
+        match input.chars().next() {
+            Some(c) => Parse::Success(c, input),
+            None => Parse::Deficient(None),
+        }
+    }
+
     pub fn other_than(chars: &'static str) -> impl Fn(&str) -> Parse<&str, &str> {
         move |input: &str| {
             let index = {
@@ -127,7 +148,7 @@ pub mod str {
         }
     }
 
-    pub fn take_any_while<F>(f: F) -> impl Fn(&str) -> Parse<&str, &str>
+    pub fn take_while<F>(f: F) -> impl Fn(&str) -> Parse<&str, &str>
     where
         F: Fn(char) -> bool,
     {
@@ -141,7 +162,7 @@ pub mod str {
                         break;
                     }
                 } else {
-                    return Parse::Deficient(Some("Take any while had not enough".to_string()));
+                    return Parse::Deficient(Some("Take while had not enough".to_string()));
                 }
             }
             let res = &input[0..index];
@@ -158,7 +179,7 @@ pub mod str {
         move |input: &str| {
             if let Some((i, c)) = input.char_indices().next() {
                 if f(c) {
-                    take_any_while(f)(&input[i..])
+                    take_while(f)(&input[i..])
                 } else {
                     Parse::Retreat("Take some requires at least one match".to_string())
                 }

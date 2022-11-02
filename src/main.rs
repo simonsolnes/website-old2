@@ -6,6 +6,7 @@ mod http;
 mod json;
 mod parse;
 mod url;
+mod urlv2;
 
 #[derive(Debug)]
 #[allow(dead_code)]
