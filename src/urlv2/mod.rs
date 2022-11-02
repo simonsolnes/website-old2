@@ -1,7 +1,6 @@
-use crate::parse::sequence::{serial, terminated};
-use crate::parse::str::{alpha_char, char, peek_char, take_while};
-use crate::parse::{comb::map, Parse};
 use std::collections::HashMap;
+
+use crate::parse::Parse;
 
 use self::primitives::unreserved;
 mod primitives;
@@ -69,38 +68,49 @@ pub trait Parser {
     where
         Self: Sized;
 }
-
 impl PartialEq for Scheme {
     fn eq(&self, other: &Self) -> bool {
         self.0.to_lowercase() == other.0.to_lowercase()
     }
 }
 
-impl Parser for Target {
-    fn parse(i: &str) -> Parse<&str, Self> {
-        terminated(map(char('*'), |_| Self::Asterix), primitives::url_end)(i)
-    }
-}
+mod parsers {
 
-impl Parser for Scheme {
-    fn parse(i: &str) -> Parse<&str, Self> {
-        map(
-            serial(
-                map(alpha_char(i), |c| c.to_string()),
-                take_while(|c| c.is_ascii_alphabetic() || c.is_ascii_digit() || "+-.".contains(c)),
-            ),
-            |(f, r)| Scheme(format!("{f}{r}")),
-        )(i)
-    }
-}
+    use crate::parse::sequence::{serial, terminated};
+    use crate::parse::str::{alpha_char, char, peek_char, take_while};
+    use crate::parse::{comb::map, Parse};
 
-impl Parser for Authority {
-    fn parse(i: &str) -> Parse<&str, Self> {
-        map(unreserved, |r| Self {
-            userinfo: Some(r.to_string()),
-            host: "".to_string(),
-            port: None,
-        })(i)
+    use super::primitives::{self, unreserved};
+    use super::{Authority, Parser, Scheme, Target};
+
+    impl Parser for Target {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            terminated(map(char('*'), |_| Self::Asterix), primitives::url_end)(i)
+        }
+    }
+
+    impl Parser for Scheme {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            map(
+                serial(
+                    map(alpha_char(i), |c| c.to_string()),
+                    take_while(|c| {
+                        c.is_ascii_alphabetic() || c.is_ascii_digit() || "+-.".contains(c)
+                    }),
+                ),
+                |(f, r)| Scheme(format!("{f}{r}")),
+            )(i)
+        }
+    }
+
+    impl Parser for Authority {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            map(unreserved, |r| Self {
+                userinfo: Some(r.to_string()),
+                host: "".to_string(),
+                port: None,
+            })(i)
+        }
     }
 }
 

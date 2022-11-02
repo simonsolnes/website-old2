@@ -1,7 +1,11 @@
 use crate::parse::{
-    str::{peek_char, take_while},
+    comb::{either_of, map_option, result},
+    str::{peek_char, pop, take, take_while},
+    tools::accept_limit,
     Parse,
 };
+
+pub struct IPv6address {}
 
 #[allow(dead_code)]
 pub mod ascii_charsets {
@@ -50,6 +54,46 @@ pub fn is_ucschar(c: char) -> bool {
 pub fn unreserved(i: &str) -> Parse<&str, &str> {
     take_while(|c| c.is_ascii_alphanumeric() || is_ucschar(c) || "-._~".contains(c))(i)
 }
+// Converts a char which is a number to u8
+fn chr_to_u8(c: char) -> Option<u8> {
+    if (c as u8) > 0x2F && (c as u8) < 0x3A {
+        Some(c as u8 - 48)
+    } else {
+        None
+    }
+}
+fn num_within(a: u8, b: u8) -> impl Fn(&str) -> Parse<&str, u8> {
+    move |i: &str| {
+        map_option(pop, |c| match chr_to_u8(c) {
+            Some(n) if n >= a && n <= b => Some(n),
+            _ => None,
+        })(i)
+    }
+}
+
+// pub fn dec_octet(input: &str) -> Parse<&str, u8> {
+//     either_of(&[r(pop, |c| c.isdigit)][..])(input)
+// }
+
+// pub fn dec_octet(input: &str) -> Parse<&str, u8> {
+//     let mut iter = input.char_indices();
+//     if let Some((i1, c1)) = iter.next() {
+//         match chr_to_u8(c1) {
+//             Some(n1) => match iter.next() {
+//                 Some((i2, c2)) => match chr_to_u8(c2) {
+//                     Some(n2) => Parse::Success(43, "hei"),
+//                     None => Parse::Success(n1, &input[i2..]),
+//                 },
+//                 None => Parse::Success(n1, ""),
+//             },
+//             None => Parse::Retreat("Not digit".to_string()),
+//         }
+//     } else {
+//         Parse::Limit(None, input)
+//     }
+
+//     //result(accept_limit(take(3)), |n| n.parse(), "cannot convert to u8")(i)
+// }
 
 /// Returns true if c is contained in ascii and in either of these:
 /// `CONTROL`: Invisible characters from 0 to 1F
@@ -82,6 +126,34 @@ mod tests {
     use super::*;
     #[test]
     fn test_unreserved() {
-        assert_eq!(unreserved("hello "), Parse::Success("hello", " "))
+        assert_eq!(unreserved("hello"), Parse::Limit(Some("hello"), ""));
+        assert_eq!(unreserved("helloå˚˚~"), Parse::Limit(Some("helloå˚˚~"), ""));
+        assert_eq!(unreserved("hello/s"), Parse::Success("hello", "/s"));
+    }
+    #[test]
+    fn test_chr_to_u8() {
+        assert_eq!(chr_to_u8('1'), Some(1));
+        assert_eq!(chr_to_u8('0'), Some(0));
+        assert_eq!(chr_to_u8('7'), Some(7));
+        assert_eq!(chr_to_u8('9'), Some(9));
+        assert_eq!(chr_to_u8('/'), None);
+        assert_eq!(chr_to_u8(':'), None);
+        assert_eq!(chr_to_u8('˚'), None);
+    }
+    #[test]
+    fn test_num_within() {
+        assert_eq!(num_within(2, 5)("45"), Parse::Success(4, "5"));
+        assert_eq!(num_within(2, 5)("4"), Parse::Success(4, ""));
+        assert!(num_within(2, 5)("13").is_err());
+        assert!(num_within(2, 5)("6").is_err());
+    }
+    #[test]
+    fn test_dec_octet() {
+        // assert_eq!(dec_octet("0"), Parse::Success(0, ""));
+        // assert_eq!(dec_octet("00"), Parse::Success(0, ""));
+        // assert_eq!(dec_octet("245"), Parse::Success(245, ""));
+        // assert_eq!(dec_octet("24"), Parse::Success(24, ""));
+        // assert!(dec_octet("260").is_err());
+        // assert_eq!(dec_octet("2:90"), Parse::Success(2, ":90"));
     }
 }
