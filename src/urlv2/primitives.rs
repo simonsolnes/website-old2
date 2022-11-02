@@ -71,7 +71,7 @@ pub fn url_end(i: &str) -> Parse<&str, ()> {
             true => Parse::Success((), i),
             false => Parse::Retreat("is not url terminative".to_string()),
         },
-        Parse::Deficient(_) => Parse::Success((), i),
+        Parse::Limit(_, _) => Parse::Success((), i),
         Parse::Retreat(r) => Parse::Retreat(r),
         Parse::Halt(h) => Parse::Halt(h),
     }

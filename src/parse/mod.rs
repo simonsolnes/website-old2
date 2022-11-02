@@ -3,7 +3,7 @@ pub enum Parse<I, O> {
     Success(O, I),
     Retreat(String),
     Halt(String),
-    Deficient(Option<String>),
+    Limit(Option<O>, I),
 }
 
 impl<I, O> Parse<I, O> {
@@ -12,7 +12,7 @@ impl<I, O> Parse<I, O> {
             Self::Success(_, _) => false,
             Parse::Retreat(_) => true,
             Parse::Halt(_) => true,
-            Parse::Deficient(_) => true,
+            Parse::Limit(_, _) => true,
         }
     }
 }
@@ -83,21 +83,21 @@ pub mod str {
                     Parse::Success(c, "")
                 }
             }
-            None => Parse::Deficient(None),
+            None => Parse::Limit(None, input),
         }
     }
 
     pub fn peek_char(input: &str) -> Parse<&str, char> {
         match input.chars().next() {
             Some(c) => Parse::Success(c, input),
-            None => Parse::Deficient(None),
+            None => Parse::Limit(None, input),
         }
     }
 
     pub fn other_than(chars: &'static str) -> impl Fn(&str) -> Parse<&str, &str> {
         move |input: &str| {
             let index = {
-                let mut index;
+                let mut index = 0;
                 let mut iter = input.char_indices();
                 loop {
                     if let Some((i, c)) = iter.next() {
@@ -106,7 +106,7 @@ pub mod str {
                             break;
                         }
                     } else {
-                        return Parse::Deficient(Some("Other than had not enough".to_string()));
+                        return Parse::Limit(Some(&input[0..index]), &input[index..]);
                     }
                 }
 
@@ -125,14 +125,14 @@ pub mod str {
 
     pub fn take(num: usize) -> impl Fn(&str) -> Parse<&str, &str> {
         move |input: &str| {
-            let mut index;
+            let mut index = 0;
             let mut count = 0;
             let mut iter = input.char_indices();
             loop {
                 if let Some((i, _)) = iter.next() {
                     index = i;
                 } else {
-                    return Parse::Deficient(Some("Take had not enough".to_string()));
+                    return Parse::Limit(Some(&input[..index]), &input[index..]);
                 }
                 if count == num {
                     break;
@@ -153,7 +153,7 @@ pub mod str {
         F: Fn(char) -> bool,
     {
         move |input: &str| {
-            let mut index;
+            let mut index = 0;
             let mut iter = input.char_indices();
             loop {
                 if let Some((i, c)) = iter.next() {
@@ -162,7 +162,7 @@ pub mod str {
                         break;
                     }
                 } else {
-                    return Parse::Deficient(Some("Take while had not enough".to_string()));
+                    return Parse::Limit(Some(&input[..index]), &input[index..]);
                 }
             }
             let res = &input[0..index];
@@ -184,7 +184,7 @@ pub mod str {
                     Parse::Retreat("Take some requires at least one match".to_string())
                 }
             } else {
-                Parse::Deficient(Some("Take some while had not enough".to_string()))
+                Parse::Limit(None, input)
             }
         }
     }
@@ -212,7 +212,7 @@ pub mod str {
                         Parse::Retreat(format!("char didnt match for: {input}, expected {char}"))
                     }
                 },
-                None => Parse::Deficient(None),
+                None => Parse::Limit(None, input),
             }
         }
     }
@@ -246,17 +246,18 @@ pub mod sequence {
     where
         P1: Fn(I) -> Parse<I, O1>,
         P2: Fn(I) -> Parse<I, O2>,
+        I: Copy,
     {
         move |i: I| match p1(i) {
             Parse::Success(res1, sur1) => match p2(sur1) {
                 Parse::Success(res2, sur2) => Parse::Success((res1, res2), sur2),
                 Parse::Retreat(r) => Parse::Retreat(r),
                 Parse::Halt(h) => Parse::Halt(h),
-                Parse::Deficient(d) => Parse::Deficient(d),
+                Parse::Limit(_, _) => Parse::Limit(None, i),
             },
             Parse::Retreat(r) => Parse::Retreat(r),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(_, _) => Parse::Limit(None, i),
         }
     }
 
@@ -360,7 +361,12 @@ pub mod repeat {
                     }
                     Parse::Retreat(_) => break,
                     Parse::Halt(h) => return Parse::Halt(h),
-                    Parse::Deficient(d) => return Parse::Deficient(d),
+                    Parse::Limit(res, sur) => {
+                        if let Some(lr) = res {
+                            acc.push(lr);
+                        }
+                        return Parse::Limit(Some(acc), sur);
+                    }
                 }
             }
             Parse::Success(acc, remainder)
@@ -388,10 +394,11 @@ pub mod repeat {
                     }
                     Parse::Retreat(_) => return Parse::Success(list, rest_unassumed),
                     Parse::Halt(_) => return Parse::Halt(format!("Halted at parsing item")),
-                    Parse::Deficient(_) => {
-                        return Parse::Deficient(Some(format!(
-                            "Not enough to parse separated list"
-                        )))
+                    Parse::Limit(res, sur) => {
+                        if let Some(r) = res {
+                            list.push(r);
+                        }
+                        return Parse::Limit(Some(list), sur);
                     }
                 }
                 match separator(rest) {
@@ -400,11 +407,7 @@ pub mod repeat {
                     }
                     Parse::Retreat(_) => return Parse::Success(list, rest),
                     Parse::Halt(_) => return Parse::Halt(format!("Halted at parsing item")),
-                    Parse::Deficient(_) => {
-                        return Parse::Deficient(Some(format!(
-                            "Not enough to parse separated list separator"
-                        )))
-                    }
+                    Parse::Limit(_, _) => return Parse::Limit(Some(list), rest_unassumed),
                 }
             }
         }
@@ -422,7 +425,7 @@ pub mod tools {
             s @ Parse::Success(_, _) => s,
             Parse::Retreat(_) => Parse::Retreat(format!("Error parsing {}", label)),
             Parse::Halt(_) => Parse::Halt(format!("Halted at parsing {}", label)),
-            Parse::Deficient(_) => Parse::Deficient(Some(format!("Not enough to parse {}", label))),
+            Parse::Limit(res, sur) => Parse::Limit(res, sur),
         }
     }
     pub fn halt<'l, I, O, P>(label: &'l str, p: P) -> impl Fn(I) -> Parse<I, O> + 'l
@@ -434,7 +437,7 @@ pub mod tools {
             s @ Parse::Success(_, _) => s,
             Parse::Retreat(r) => Parse::Halt(format!("Halted {label}, for {i} ({r})")),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(r, s) => Parse::Limit(r, s),
         }
     }
 }
@@ -464,31 +467,32 @@ pub mod comb {
             Parse::Success(res, sur) => Parse::Success(Some(res), sur),
             Parse::Retreat(_) => Parse::Success(None, i),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(r, s) => Parse::Limit(Some(r), s),
         }
     }
 
     /// Returns the parse of the first parser that succeeds
+    /// If a parser limits out, it will try others as well
     pub fn either_of<I, O, P>(parsers: &[P]) -> impl Fn(I) -> Parse<I, O> + '_
     where
         P: Fn(I) -> Parse<I, O>,
         I: Copy,
     {
         move |input: I| {
-            let mut deficient_option = false;
+            let mut limit: Option<(Option<O>, I)> = None;
             for parser in parsers.iter() {
                 match parser(input) {
                     s @ Parse::Success(_, _) => return s,
                     Parse::Retreat(_) => continue,
                     h @ Parse::Halt(_) => return h,
-                    Parse::Deficient(_) => {
-                        deficient_option = true;
+                    Parse::Limit(r, s) => {
+                        limit = Some((r, s));
                         continue;
                     }
                 }
             }
-            if deficient_option {
-                Parse::Deficient(Some("Deficient parsing any array".to_string()))
+            if let Some((r, s)) = limit {
+                Parse::Limit(r, s)
             } else {
                 Parse::Retreat("Not any of the anys".to_string())
             }
@@ -504,7 +508,7 @@ pub mod comb {
             s @ Parse::Success(_, _) => s,
             Parse::Retreat(_) => p2(i),
             h @ Parse::Halt(_) => h,
-            d @ Parse::Deficient(_) => d,
+            Parse::Limit(r, s) => Parse::Limit(r, s),
         }
     }
 
@@ -513,6 +517,7 @@ pub mod comb {
     where
         P1: Fn(I) -> Parse<I, O1>,
         P2: Fn(O1) -> Parse<I, O2>,
+        I: Copy,
     {
         //TODO what should the surplus be
         move |i: I| match p1(i) {
@@ -520,11 +525,11 @@ pub mod comb {
                 Parse::Success(res2, sur2) => Parse::Success(res2, sur2),
                 Parse::Retreat(r) => Parse::Retreat(r),
                 Parse::Halt(h) => Parse::Halt(h),
-                Parse::Deficient(d) => Parse::Deficient(d),
+                Parse::Limit(r, s) => Parse::Limit(r, s),
             },
             Parse::Retreat(r) => Parse::Retreat(r),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(_, _) => Parse::Limit(None, i),
         }
     }
 
@@ -533,14 +538,16 @@ pub mod comb {
     where
         P: Fn(I) -> Parse<I, O>,
         F: Fn(O) -> M,
+        I: Copy,
     {
         move |i: I| match parser(i) {
             Parse::Success(res, sur) => Parse::Success(func(res), sur),
             Parse::Retreat(r) => Parse::Retreat(r),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(r, s) => Parse::Limit(None, i),
         }
     }
+
     pub fn result<'l, I, O, P, F, M, E>(
         parser: P,
         func: F,
@@ -549,6 +556,7 @@ pub mod comb {
     where
         P: Fn(I) -> Parse<I, O> + 'l,
         F: Fn(O) -> Result<M, E> + 'l,
+        I: Copy,
     {
         move |i: I| match parser(i) {
             Parse::Success(res, sur) => match func(res) {
@@ -557,7 +565,7 @@ pub mod comb {
             },
             Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(_, _) => Parse::Limit(None, i),
         }
     }
 
@@ -570,6 +578,7 @@ pub mod comb {
         P: Fn(I) -> Parse<I, O> + 'a,
         F: Fn(O) -> Result<M, ()> + 'a,
         O: std::fmt::Display + Copy,
+        I: Copy,
     {
         move |i: I| match parser(i) {
             Parse::Success(res, sur) => match func(res) {
@@ -578,7 +587,7 @@ pub mod comb {
             },
             Parse::Retreat(r) => Parse::Retreat(format!("retreat from {r}")),
             Parse::Halt(h) => Parse::Halt(h),
-            Parse::Deficient(d) => Parse::Deficient(d),
+            Parse::Limit(_, _) => Parse::Limit(None, i),
         }
     }
 
