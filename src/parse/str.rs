@@ -1,4 +1,4 @@
-use super::comb::result;
+use super::comb::{map_option, result};
 use super::Parse;
 
 const ASCII_ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -175,4 +175,28 @@ pub fn char_of(chars: &'static str) -> impl Fn(&str) -> Parse<&str, char> {
 
 pub fn some_chars_of(chars: &'static str) -> impl Fn(&str) -> Parse<&str, &str> {
     take_some_while(|c| chars.contains(c))
+}
+
+pub fn digit(input: &str) -> Parse<&str, u8> {
+    map_option(pop, |c| {
+        if (c as u8) > 0x2F && (c as u8) < 0x3A {
+            Some(c as u8 - 48)
+        } else {
+            None
+        }
+    })(input)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_digit_to_u8() {
+        assert_eq!(digit("1"), Parse::Success(1, ""));
+        assert_eq!(digit("0"), Parse::Success(0, ""));
+        assert_eq!(digit("77"), Parse::Success(7, "7"));
+        assert_eq!(digit("9˚"), Parse::Success(9, "˚"));
+        assert!(digit("/").is_err());
+        assert!(digit(":").is_err());
+        assert!(digit("˚").is_err());
+    }
 }
