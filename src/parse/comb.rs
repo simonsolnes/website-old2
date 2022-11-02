@@ -1,4 +1,3 @@
-
 use super::Parse;
 
 // pub fn not<P, I, O>(p: P) -> impl Fn(I) -> Parse<I, ()>
@@ -118,6 +117,23 @@ where
         Parse::Success(res, sur) => match func(res) {
             Ok(m) => Parse::Success(m, sur),
             Err(_) => Parse::Retreat(format!("Result error {}", label)),
+        },
+        Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
+        Parse::Halt(h) => Parse::Halt(h),
+        Parse::Limit(_, _) => Parse::Limit(None, i),
+    }
+}
+
+pub fn map_option<I, O, P, F, M>(parser: P, func: F) -> impl Fn(I) -> Parse<I, M>
+where
+    P: Fn(I) -> Parse<I, O>,
+    F: Fn(O) -> Option<M>,
+    I: Copy,
+{
+    move |i: I| match parser(i) {
+        Parse::Success(res, sur) => match func(res) {
+            Some(m) => Parse::Success(m, sur),
+            None => Parse::Retreat(format!("Map option error")),
         },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
