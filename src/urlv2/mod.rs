@@ -63,6 +63,14 @@ struct URI {}
 #[derive(PartialEq, Debug)]
 struct Host {}
 
+#[derive(PartialEq, Debug)]
+struct IPv4Address(u8, u8, u8, u8);
+
+enum IPLiteral {
+    IPv6Address,
+    IPvFuture,
+}
+
 pub trait Parser {
     fn parse(i: &str) -> Parse<&str, Self>
     where
@@ -76,12 +84,12 @@ impl PartialEq for Scheme {
 
 mod parsers {
 
-    use crate::parse::sequence::{serial, terminated};
+    use crate::parse::sequence::{serial, serial3, serial4, terminated};
     use crate::parse::str::{alpha_char, char, peek_char, take_while};
     use crate::parse::{comb::map, Parse};
 
-    use super::primitives::{self, unreserved};
-    use super::{Authority, Parser, Scheme, Target};
+    use super::primitives::{self, dec_octet, unreserved};
+    use super::{Authority, IPLiteral, IPv4Address, Parser, Scheme, Target};
 
     impl Parser for Target {
         fn parse(i: &str) -> Parse<&str, Self> {
@@ -112,6 +120,24 @@ mod parsers {
             })(i)
         }
     }
+    impl Parser for IPv4Address {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            map(
+                serial4(
+                    terminated(dec_octet, char('.')),
+                    terminated(dec_octet, char('.')),
+                    terminated(dec_octet, char('.')),
+                    dec_octet,
+                ),
+                |(a, b, c, d)| IPv4Address(a, b, c, d),
+            )(i)
+        }
+    }
+    impl Parser for IPLiteral {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            Parse::Retreat("IPv6 parser not implemented".to_string())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -138,5 +164,21 @@ mod tests {
             Parse::Success(Scheme("n+3".to_string()), " ")
         );
         assert!(Scheme::parse(" N+3 ").is_err());
+    }
+
+    #[test]
+    fn test_ipv4_address() {
+        assert_eq!(
+            IPv4Address::parse("1.1.1.1"),
+            Parse::Success(IPv4Address(1, 1, 1, 1), "")
+        );
+        assert_eq!(
+            IPv4Address::parse("0.23.100.255"),
+            Parse::Success(IPv4Address(0, 23, 100, 255), "")
+        );
+        assert!(IPv4Address::parse("0.23.300.29").is_err());
+        assert!(IPv4Address::parse("0.23.3").is_err());
+        assert!(IPv4Address::parse("340.23.3.0").is_err());
+        assert!(IPv4Address::parse("14023.3.0").is_err());
     }
 }
