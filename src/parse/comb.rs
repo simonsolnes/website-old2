@@ -63,8 +63,44 @@ where
         s @ Parse::Success(_, _) => s,
         Parse::Retreat(_) => p2(i),
         h @ Parse::Halt(_) => h,
-        Parse::Limit(r, s) => Parse::Limit(r, s),
+        Parse::Limit(r, s) => p2(i),
     }
+}
+pub fn either3<I, O, P1, P2, P3>(p1: P1, p2: P2, p3: P3) -> impl Fn(I) -> Parse<I, O>
+where
+    P1: Fn(I) -> Parse<I, O>,
+    P2: Fn(I) -> Parse<I, O>,
+    P3: Fn(I) -> Parse<I, O>,
+    I: Copy,
+{
+    either(either(p1, p2), p3)
+}
+pub fn either4<I, O, P1, P2, P3, P4>(p1: P1, p2: P2, p3: P3, p4: P4) -> impl Fn(I) -> Parse<I, O>
+where
+    P1: Fn(I) -> Parse<I, O>,
+    P2: Fn(I) -> Parse<I, O>,
+    P3: Fn(I) -> Parse<I, O>,
+    P4: Fn(I) -> Parse<I, O>,
+    I: Copy,
+{
+    either(either(p1, p2), either(p3, p4))
+}
+pub fn either5<I, O, P1, P2, P3, P4, P5>(
+    p1: P1,
+    p2: P2,
+    p3: P3,
+    p4: P4,
+    p5: P5,
+) -> impl Fn(I) -> Parse<I, O>
+where
+    P1: Fn(I) -> Parse<I, O>,
+    P2: Fn(I) -> Parse<I, O>,
+    P3: Fn(I) -> Parse<I, O>,
+    P4: Fn(I) -> Parse<I, O>,
+    P5: Fn(I) -> Parse<I, O>,
+    I: Copy,
+{
+    either(either(p1, p2), either3(p3, p4, p5))
 }
 
 // Returns a parser which pipes the output from the first parser to the second parser
@@ -141,6 +177,23 @@ where
     }
 }
 
+pub fn map_bool<I, O, P, F>(parser: P, func: F) -> impl Fn(I) -> Parse<I, O>
+where
+    P: Fn(I) -> Parse<I, O>,
+    F: Fn(&O) -> bool,
+    I: Copy,
+{
+    move |i: I| match parser(i) {
+        Parse::Success(res, sur) => match func(&res) {
+            true => Parse::Success(res, sur),
+            false => Parse::Retreat(format!("Map bool error")),
+        },
+        Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
+        Parse::Halt(h) => Parse::Halt(h),
+        Parse::Limit(_, _) => Parse::Limit(None, i),
+    }
+}
+
 pub fn result_halt<'a, I, O, P, F, M>(
     parser: P,
     func: F,
@@ -163,8 +216,18 @@ where
     }
 }
 
-pub fn ret<I, O: Copy>(x: O) -> impl Fn(I) -> Parse<I, O> {
-    move |i: I| Parse::Success(x, i)
+pub fn ret<I, O, P, M>(p: P, x: M) -> impl Fn(I) -> Parse<I, M>
+where
+    P: Fn(I) -> Parse<I, O>,
+    M: Copy,
+    I: Copy,
+{
+    move |i: I| match p(i) {
+        Parse::Success(_, sur) => Parse::Success(x, sur),
+        Parse::Retreat(r) => Parse::Retreat(r),
+        Parse::Halt(h) => Parse::Halt(h),
+        Parse::Limit(r, s) => Parse::Limit(None, i),
+    }
 }
 
 // If parser succeeds,
