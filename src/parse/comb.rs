@@ -173,7 +173,10 @@ where
         },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(_, _) => Parse::Limit(None, i),
+        Parse::Limit(res, sur) => match res {
+            Some(res) => Parse::Limit(func(res), sur),
+            None => Parse::Limit(None, sur),
+        },
     }
 }
 
