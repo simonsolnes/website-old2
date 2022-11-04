@@ -223,6 +223,11 @@ mod tests {
         let expected1 = "stf¨Ò¨Ô‡ﬂ›ﬁ°°ﬁﬁ∏˝ˇÎÎÓ".to_string();
         let (_, result1) = percent_decode(input1).unwrap();
         assert_eq!(result1, expected1);
+        let input2 = "he%20%20o%CB%9A";
+        let expected2 = "he  o˚";
+        let (_, result2) = percent_decode(input2).unwrap();
+        assert_eq!(result2, expected2);
+
         assert!(percent_decode("fÔes%C2%A8mk%e").is_err());
         assert!(percent_decode("fÔes%C2%A8mk%eka").is_err());
     }
