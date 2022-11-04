@@ -1,6 +1,6 @@
-use super::Parse;
+use super::{comb::map_option, Parse};
 
-/// Applies a parser zero or more times
+/// Applies a parser zero or more times and returns a vector with the results
 pub fn repeat_any<I, O, P>(p: P) -> impl Fn(I) -> Parse<I, Vec<O>>
 where
     P: Fn(I) -> Parse<I, O>,
@@ -28,6 +28,24 @@ where
         Parse::Success(acc, remainder)
     }
 }
+/// Applies a parser one or more times and returns a vector with the results
+/// Retreats if zero repetitions was found
+pub fn repeat_some<I, O, P>(p: P) -> impl Fn(I) -> Parse<I, Vec<O>>
+where
+    P: Fn(I) -> Parse<I, O>,
+    O: std::fmt::Debug,
+    I: Copy,
+{
+    map_option(repeat_any(p), |res| {
+        println!("res: {:?}", res);
+        if res.len() > 0 {
+            Some(res)
+        } else {
+            None
+        }
+    })
+}
+
 pub fn separated_items<I, O1, O2, P1, P2>(
     separator: P1,
     item: P2,
@@ -66,5 +84,38 @@ where
                 Parse::Limit(_, _) => return Parse::Limit(Some(list), rest_unassumed),
             }
         }
+    }
+}
+
+#[cfg(test)]
+
+mod tests {
+    use super::super::*;
+    #[test]
+    fn test_repeat_any() {
+        assert_eq!(
+            repeat::repeat_any(str::char('a'))("aa"),
+            Parse::Limit(Some(vec!['a', 'a']), "")
+        );
+        assert_eq!(
+            repeat::repeat_any(comb::map_bool(str::take(2), |r| r.is_ascii()))("aabbåå"),
+            Parse::Success(vec!["aa", "bb"], "åå")
+        );
+        assert_eq!(
+            repeat::repeat_any(str::take(2))("aabbcc"),
+            Parse::Limit(Some(vec!["aa", "bb", "cc"]), "")
+        );
+    }
+    #[test]
+    fn test_repeat_some() {
+        assert_eq!(
+            repeat::repeat_some(str::char('a'))("aa"),
+            Parse::Limit(Some(vec!['a', 'a']), "")
+        );
+        assert_eq!(
+            repeat::repeat_some(str::char('a'))("aab"),
+            Parse::Success(vec!['a', 'a'], "b")
+        );
+        assert!(repeat::repeat_some(str::char('a'))("").is_err(),);
     }
 }
