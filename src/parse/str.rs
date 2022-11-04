@@ -76,7 +76,11 @@ pub fn take(num: usize) -> impl Fn(&str) -> Parse<&str, &str> {
                 return if num == count {
                     Parse::Success(input, "")
                 } else {
-                    Parse::Limit(Some(input), "")
+                    if count > 0 {
+                        Parse::Limit(Some(input), "")
+                    } else {
+                        Parse::Limit(None, "")
+                    }
                 };
             }
             if count == num {
