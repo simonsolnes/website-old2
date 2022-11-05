@@ -25,7 +25,7 @@ pub fn terminated<I, O1, O2, P1, P2>(p1: P1, p2: P2) -> impl Fn(I) -> Parse<I, O
 where
     P1: Fn(I) -> Parse<I, O1>,
     P2: Fn(I) -> Parse<I, O2>,
-    I: Copy,
+    I: Copy + std::fmt::Display + std::fmt::Debug,
 {
     map(serial(p1, p2), |(r1, _)| r1)
 }
@@ -34,7 +34,7 @@ pub fn preceded<I, O1, O2, P1, P2>(p1: P1, p2: P2) -> impl Fn(I) -> Parse<I, O2>
 where
     P1: Fn(I) -> Parse<I, O1>,
     P2: Fn(I) -> Parse<I, O2>,
-    I: Copy,
+    I: Copy + std::fmt::Display + std::fmt::Debug,
 {
     map(serial(p1, p2), |(_, r2)| r2)
 }
@@ -48,7 +48,7 @@ where
     P1: Fn(I) -> Parse<I, O1>,
     P2: Fn(I) -> Parse<I, O2>,
     P3: Fn(I) -> Parse<I, O3>,
-    I: Copy,
+    I: Copy + std::fmt::Display + std::fmt::Debug,
 {
     map(serial3(before, subject, after), |(_, res, _)| res)
 }
@@ -62,7 +62,7 @@ where
     P1: Fn(I) -> Parse<I, O1>,
     P2: Fn(I) -> Parse<I, O2>,
     P3: Fn(I) -> Parse<I, O3>,
-    I: Copy,
+    I: Copy + std::fmt::Display + std::fmt::Debug,
 {
     map(serial3(before, separator, after), |(b, _, a)| (b, a))
 }
@@ -76,7 +76,7 @@ where
     P1: Fn(I) -> Parse<I, O1>,
     P2: Fn(I) -> Parse<I, O2>,
     P3: Fn(I) -> Parse<I, O3>,
-    I: Copy,
+    I: Copy + std::fmt::Display + std::fmt::Debug,
 {
     map(serial(serial(p1, p2), p3), |((r1, r2), r3)| (r1, r2, r3))
 }
@@ -91,7 +91,7 @@ where
     P2: Fn(I) -> Parse<I, O2>,
     P3: Fn(I) -> Parse<I, O3>,
     P4: Fn(I) -> Parse<I, O4>,
-    I: Copy,
+    I: Copy + std::fmt::Display + std::fmt::Debug,
 {
     map(
         serial(serial(p1, p2), serial(p3, p4)),

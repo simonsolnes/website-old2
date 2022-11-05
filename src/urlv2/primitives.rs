@@ -7,7 +7,7 @@ use crate::parse::{
     },
     repeat::{repeat_any, repeat_some},
     sequence::{preceded, serial, serial3},
-    str::{char, digit, peek_char, pop, take, take_while},
+    str::{char, digit, peek_char, pop, take, take_some_while, take_while},
     tools::{accept_limit, halt},
     Parse,
 };
@@ -27,6 +27,10 @@ pub mod ascii_charsets {
     pub const SUB_DELIMS: &'static str = "!$&'()*+,;=";
     pub const PERCENT: char = '%';
     pub const URL_ILLEGAL: &'static str = " \"<>\\^`}{|";
+}
+
+pub fn sub_delim(i: &str) -> Parse<&str, char> {
+    map_bool(pop, |c| ascii_charsets::SUB_DELIMS.contains(*c))(i)
 }
 
 pub fn is_ucschar(c: char) -> bool {
@@ -57,7 +61,7 @@ pub fn is_ucschar(c: char) -> bool {
 }
 
 pub fn unreserved(i: &str) -> Parse<&str, &str> {
-    take_while(|c| c.is_ascii_alphanumeric() || is_ucschar(c) || "-._~".contains(c))(i)
+    take_some_while(|c| c.is_ascii_alphanumeric() || is_ucschar(c) || "-._~".contains(c))(i)
 }
 
 // Parses exactly one
@@ -115,6 +119,7 @@ pub fn url_end(i: &str) -> Parse<&str, ()> {
 
 // pub fn hex_digit()
 
+/// Parses a series of percent encoded bytes to unicode string
 pub fn percent_encoded(i: &str) -> Parse<&str, String> {
     map_result_halts(
         repeat_some(preceded(
@@ -125,10 +130,7 @@ pub fn percent_encoded(i: &str) -> Parse<&str, String> {
                 "invalid hex digits",
             )),
         )),
-        |s| -> Result<String, std::str::Utf8Error> {
-            println!("s: {:?}", s);
-            Ok(std::str::from_utf8(&s)?.to_string())
-        },
+        |s| -> Result<String, std::str::Utf8Error> { Ok(std::str::from_utf8(&s)?.to_string()) },
         "unvalid unicode sequence",
     )(i)
 }
@@ -180,8 +182,12 @@ mod tests {
             percent_encoded("%C2%A8"),
             Parse::Limit(Some("¨".to_string()), "")
         );
-        assert!(percent_encoded("%C2").is_halt());
-        //assert_eq!(percent_encoded("%C2"), Parse::Success('¨', ""));
+        assert!(percent_encoded("%C2 ").is_halt());
+        assert!(percent_encoded("%C2r").is_halt());
+        assert!(percent_encoded("%C2").is_limit());
+        assert!(percent_encoded("rsf").is_retreat());
+        assert!(percent_encoded(":lo").is_retreat());
+        assert!(percent_encoded(":").is_retreat());
 
         let input1 = "%C2%A8%C3%92%C2%A8%C3%94%E2%80%A1%EF%AC%82%E2%80%BA%EF%AC%81%C2%B0%C2%B0%EF%AC%81%EF%AC%81%E2%88%8F%CB%9D%CB%87%C3%8E%C3%8E%C3%93 ";
         let expected1 = "¨Ò¨Ô‡ﬂ›ﬁ°°ﬁﬁ∏˝ˇÎÎÓ".to_string();
@@ -190,5 +196,14 @@ mod tests {
         let input2 = "%20%20%CB%9A ";
         let expected2 = "  ˚".to_string();
         assert_eq!(percent_encoded(input2), Parse::Success(expected2, " "));
+    }
+    #[test]
+    fn test_sub_delim() {
+        println!("1");
+        assert!(sub_delim("f+").is_retreat());
+        println!("2");
+        assert_eq!(sub_delim("+"), Parse::Success('+', ""));
+        println!("3");
+        assert_eq!(sub_delim("!fm"), Parse::Success('!', "fm"));
     }
 }

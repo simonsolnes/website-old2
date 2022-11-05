@@ -66,6 +66,9 @@ struct Host {}
 #[derive(PartialEq, Debug)]
 struct IPv4Address(u8, u8, u8, u8);
 
+#[derive(PartialEq, Debug)]
+pub struct UserInfo(String);
+
 enum IPLiteral {
     IPv6Address,
     IPvFuture,
@@ -84,12 +87,14 @@ impl PartialEq for Scheme {
 
 mod parsers {
 
+    use crate::parse::comb::{either, either3};
+    use crate::parse::repeat::repeat_some;
     use crate::parse::sequence::{serial, serial3, serial4, terminated};
     use crate::parse::str::{alpha_char, char, peek_char, take_while};
     use crate::parse::{comb::map, Parse};
 
-    use super::primitives::{self, dec_octet, unreserved};
-    use super::{Authority, IPLiteral, IPv4Address, Parser, Scheme, Target};
+    use super::primitives::{self, dec_octet, percent_encoded, sub_delim, unreserved};
+    use super::{Authority, IPLiteral, IPv4Address, Parser, Scheme, Target, UserInfo};
 
     impl Parser for Target {
         fn parse(i: &str) -> Parse<&str, Self> {
@@ -138,47 +143,74 @@ mod parsers {
             Parse::Retreat("IPv6 parser not implemented".to_string())
         }
     }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    #[test]
-    fn test_target_asterix() {
-        assert_eq!(Target::parse("*"), Parse::Success(Target::Asterix, ""));
-        assert_eq!(Target::parse("* "), Parse::Success(Target::Asterix, " "));
-        println!("{:?}", Target::parse("*s").is_retreat());
-        assert!(Target::parse("*s").is_retreat());
+    impl Parser for UserInfo {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            map(
+                repeat_some(either3(
+                    map(unreserved, |s| s.to_string()),
+                    percent_encoded,
+                    map(sub_delim, |c| c.to_string()),
+                )),
+                |r| UserInfo(r.join("")),
+            )(i)
+        }
     }
 
-    #[test]
-    fn test_scheme() {
-        assert_eq!(Scheme("N".to_string()), Scheme("n".to_string()));
-        assert_eq!(
-            Scheme::parse("N "),
-            Parse::Success(Scheme("n".to_string()), " ")
-        );
-        assert_eq!(
-            Scheme::parse("N+3 "),
-            Parse::Success(Scheme("n+3".to_string()), " ")
-        );
-        assert!(Scheme::parse(" N+3 ").is_retreat());
-    }
+    #[cfg(test)]
+    mod tests {
 
-    #[test]
-    fn test_ipv4_address() {
-        assert_eq!(
-            IPv4Address::parse("1.1.1.1"),
-            Parse::Success(IPv4Address(1, 1, 1, 1), "")
-        );
-        assert_eq!(
-            IPv4Address::parse("0.23.100.255"),
-            Parse::Success(IPv4Address(0, 23, 100, 255), "")
-        );
-        assert!(IPv4Address::parse("0.23.300.29").is_retreat());
-        assert!(IPv4Address::parse("0.23.3").is_limit());
-        assert!(IPv4Address::parse("340.23.3.0").is_retreat());
-        assert!(IPv4Address::parse("14023.3.0").is_retreat());
+        use super::*;
+        #[test]
+        fn test_target_asterix() {
+            assert_eq!(Target::parse("*"), Parse::Success(Target::Asterix, ""));
+            assert_eq!(Target::parse("* "), Parse::Success(Target::Asterix, " "));
+            println!("{:?}", Target::parse("*s").is_retreat());
+            assert!(Target::parse("*s").is_retreat());
+        }
+
+        #[test]
+        fn test_scheme() {
+            assert_eq!(Scheme("N".to_string()), Scheme("n".to_string()));
+            assert_eq!(
+                Scheme::parse("N "),
+                Parse::Success(Scheme("n".to_string()), " ")
+            );
+            assert_eq!(
+                Scheme::parse("N+3 "),
+                Parse::Success(Scheme("n+3".to_string()), " ")
+            );
+            assert!(Scheme::parse(" N+3 ").is_retreat());
+        }
+
+        #[test]
+        fn test_ipv4_address() {
+            assert_eq!(
+                IPv4Address::parse("1.1.1.1"),
+                Parse::Success(IPv4Address(1, 1, 1, 1), "")
+            );
+            assert_eq!(
+                IPv4Address::parse("0.23.100.255"),
+                Parse::Success(IPv4Address(0, 23, 100, 255), "")
+            );
+            assert!(IPv4Address::parse("0.23.300.29").is_retreat());
+            assert!(IPv4Address::parse("0.23.3").is_limit());
+            assert!(IPv4Address::parse("340.23.3.0").is_retreat());
+            assert!(IPv4Address::parse("14023.3.0").is_retreat());
+        }
+        #[test]
+        fn test_user_info() {
+            assert_eq!(
+                UserInfo::parse("hello "),
+                Parse::Success(UserInfo("hello".to_string()), " ")
+            );
+            assert_eq!(
+                UserInfo::parse("he!llo "),
+                Parse::Success(UserInfo("he!llo".to_string()), " ")
+            );
+            assert_eq!(
+                UserInfo::parse("he!l%20lo "),
+                Parse::Success(UserInfo("he!l lo".to_string()), " ")
+            );
+        }
     }
 }

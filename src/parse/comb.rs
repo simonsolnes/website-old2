@@ -135,7 +135,8 @@ where
         Parse::Success(res, sur) => Parse::Success(func(res), sur),
         Parse::Retreat(r) => Parse::Retreat(r),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(r, s) => Parse::Limit(None, i),
+        Parse::Limit(Some(r), s) => Parse::Limit(Some(func(r)), s),
+        Parse::Limit(None, _) => Parse::Limit(None, i),
     }
 }
 
@@ -156,11 +157,11 @@ where
         },
         Parse::Limit(Some(res), sur) => match func(res) {
             Ok(m) => Parse::Limit(Some(m), sur),
-            Err(_) => Parse::Retreat(format!("Result error {}", label)),
+            Err(_) => Parse::Limit(None, sur),
         },
+        Parse::Limit(None, _) => Parse::Limit(None, i),
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(None, _) => Parse::Limit(None, i),
     }
 }
 
@@ -181,7 +182,7 @@ where
         },
         Parse::Limit(Some(res), sur) => match func(res) {
             Ok(m) => Parse::Limit(Some(m), sur),
-            Err(_) => Parse::Halt(format!("Result error {}", label)),
+            Err(_) => Parse::Limit(None, i),
         },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
@@ -202,10 +203,11 @@ where
         },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(res, sur) => match res {
-            Some(res) => Parse::Limit(func(res), sur),
-            None => Parse::Limit(None, sur),
+        Parse::Limit(Some(res), sur) => match func(res) {
+            Some(m) => Parse::Limit(Some(m), sur),
+            None => Parse::Limit(None, i),
         },
+        Parse::Limit(None, _) => Parse::Limit(None, i),
     }
 }
 
@@ -222,7 +224,11 @@ where
         },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(_, _) => Parse::Limit(None, i),
+        Parse::Limit(Some(r), s) => match func(&r) {
+            true => Parse::Limit(Some(r), s),
+            false => Parse::Limit(None, i),
+        },
+        Parse::Limit(None, _) => Parse::Limit(None, i),
     }
 }
 
@@ -236,7 +242,8 @@ where
         Parse::Success(_, sur) => Parse::Success(x, sur),
         Parse::Retreat(r) => Parse::Retreat(r),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(r, s) => Parse::Limit(None, i),
+        Parse::Limit(Some(_), s) => Parse::Limit(Some(x), s),
+        Parse::Limit(None, _) => Parse::Limit(None, i),
     }
 }
 

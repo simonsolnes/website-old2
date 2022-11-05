@@ -196,6 +196,11 @@ pub fn digit(input: &str) -> Parse<&str, u8> {
 mod tests {
     use super::*;
     #[test]
+    fn test_take_while() {
+        assert_eq!(take_while(|c| c == 'a')("aab"), Parse::Success("aa", "b"));
+        assert_eq!(take_while(|c| c == 'a')("aa"), Parse::Limit(Some("aa"), ""));
+    }
+    #[test]
     fn test_digit_to_u8() {
         assert_eq!(digit("1"), Parse::Success(1, ""));
         assert_eq!(digit("0"), Parse::Success(0, ""));
