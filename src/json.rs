@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::parse::comb::either_of;
-use crate::parse::comb::{either, map, optional, result, result_halt};
+use crate::parse::comb::{either, map, map_result, optional};
 use crate::parse::repeat::repeat_any;
 use crate::parse::repeat::separated_items;
 use crate::parse::sequence::{around, between, preceded, serial, serial3, serial4};
@@ -91,7 +91,7 @@ fn object(i: &str) -> Parse<&str, JSON> {
 }
 
 fn number(i: &str) -> Parse<&str, JSON> {
-    result(
+    map_result(
         serial4(
             // Negative
             map(optional(char('-')), |s| match s {
@@ -174,46 +174,43 @@ fn string(i: &str) -> Parse<&str, JSON> {
                 // Backslash escaped
                 preceded(
                     char('\\'),
-                    halt(
-                        "expected legal escaped character",
-                        either(
-                            // Escaped characters
-                            result(
-                                pop,
-                                |c| {
-                                    match match c {
-                                        '"' => Ok('"'),    // Quote
-                                        '\\' => Ok('\\'),  // Backslash
-                                        '/' => Ok('/'),    // Farward slash
-                                        'b' => Ok('\x08'), // BS Backspace
-                                        'f' => Ok('\x0C'), // FF Form feed
-                                        'n' => Ok('\n'),   // LF Line Feed
-                                        'r' => Ok('\r'),   // CR Carriage Return
-                                        't' => Ok('\t'),   // HT Horizontal Tab
-                                        _ => Err(()),
-                                    } {
-                                        Ok(c) => Ok(c.to_string()),
-                                        Err(e) => Err(e),
-                                    }
-                                },
-                                "escaped character",
-                            ),
-                            // UTF-8 hex characters
-                            preceded(
-                                char('u'),
-                                result_halt(
-                                    take(4),
-                                    |h| {
-                                        println!("h: {h}");
-                                        Ok(char::from_u32(u32::from_str_radix(h, 16).or(Err(()))?)
-                                            .ok_or(())?
-                                            .to_string())
-                                    },
-                                    "hex formatted unicode",
-                                ),
-                            ),
+                    halt(either(
+                        // Escaped characters
+                        map_result(
+                            pop,
+                            |c| {
+                                match match c {
+                                    '"' => Ok('"'),    // Quote
+                                    '\\' => Ok('\\'),  // Backslash
+                                    '/' => Ok('/'),    // Farward slash
+                                    'b' => Ok('\x08'), // BS Backspace
+                                    'f' => Ok('\x0C'), // FF Form feed
+                                    'n' => Ok('\n'),   // LF Line Feed
+                                    'r' => Ok('\r'),   // CR Carriage Return
+                                    't' => Ok('\t'),   // HT Horizontal Tab
+                                    _ => Err(()),
+                                } {
+                                    Ok(c) => Ok(c.to_string()),
+                                    Err(e) => Err(e),
+                                }
+                            },
+                            "escaped character",
                         ),
-                    ),
+                        // UTF-8 hex characters
+                        preceded(
+                            char('u'),
+                            halt(map_result(
+                                take(4),
+                                |h| -> Result<String, ()> {
+                                    println!("h: {h}");
+                                    Ok(char::from_u32(u32::from_str_radix(h, 16).or(Err(()))?)
+                                        .ok_or(())?
+                                        .to_string())
+                                },
+                                "hex formatted unicode",
+                            )),
+                        ),
+                    )),
                 ),
             )),
             char('"'),
@@ -236,7 +233,7 @@ mod tests {
     fn test_bool() {
         assert_eq!(bool("truem"), Parse::Success(JSON::Bool(true), "m"));
         assert_eq!(bool("false"), Parse::Success(JSON::Bool(false), ""));
-        assert!(bool("s").is_err());
+        assert!(bool("s").is_retreat());
     }
 
     #[test]

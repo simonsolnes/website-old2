@@ -1,10 +1,10 @@
-use super::comb::{map_option, result};
+use super::comb::{map_option, map_result};
 use super::Parse;
 
 const ASCII_ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 pub fn alpha_char<'a>(i: &'a str) -> impl Fn(&'a str) -> Parse<&'a str, char> {
-    result(
+    map_result(
         pop,
         |c| match ASCII_ALPHABET.contains(c) {
             true => Ok(c),
@@ -166,7 +166,7 @@ pub fn char<'a>(char: char) -> impl Fn(&'a str) -> Parse<&str, char> {
 
 pub fn char_of(chars: &'static str) -> impl Fn(&str) -> Parse<&str, char> {
     move |i: &str| {
-        result(
+        map_result(
             pop,
             |c| match chars.contains(c) {
                 true => Ok(c),
@@ -181,6 +181,7 @@ pub fn some_chars_of(chars: &'static str) -> impl Fn(&str) -> Parse<&str, &str> 
     take_some_while(|c| chars.contains(c))
 }
 
+/// Parses one digit, 0123456789
 pub fn digit(input: &str) -> Parse<&str, u8> {
     map_option(pop, |c| {
         if (c as u8) > 0x2F && (c as u8) < 0x3A {
@@ -190,6 +191,7 @@ pub fn digit(input: &str) -> Parse<&str, u8> {
         }
     })(input)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,8 +201,8 @@ mod tests {
         assert_eq!(digit("0"), Parse::Success(0, ""));
         assert_eq!(digit("77"), Parse::Success(7, "7"));
         assert_eq!(digit("9˚"), Parse::Success(9, "˚"));
-        assert!(digit("/").is_err());
-        assert!(digit(":").is_err());
-        assert!(digit("˚").is_err());
+        assert!(digit("/").is_retreat());
+        assert!(digit(":").is_retreat());
+        assert!(digit("˚").is_retreat());
     }
 }

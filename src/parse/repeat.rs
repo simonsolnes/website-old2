@@ -105,6 +105,10 @@ mod tests {
             repeat::repeat_any(str::take(2))("aabbcc"),
             Parse::Limit(Some(vec!["aa", "bb", "cc"]), "")
         );
+        assert_eq!(
+            repeat::repeat_any(sequence::preceded(str::char('.'), str::take(2)))(".aa.bbcc"),
+            Parse::Success(vec!["aa", "bb"], "cc")
+        );
     }
     #[test]
     fn test_repeat_some() {
@@ -116,6 +120,10 @@ mod tests {
             repeat::repeat_some(str::char('a'))("aab"),
             Parse::Success(vec!['a', 'a'], "b")
         );
-        assert!(repeat::repeat_some(str::char('a'))("").is_err(),);
+        assert!(repeat::repeat_some(str::char('a'))("").is_limit(),);
+        assert_eq!(
+            repeat::repeat_some(sequence::preceded(str::char('.'), str::take(2)))(".aa.bbcc"),
+            Parse::Success(vec!["aa", "bb"], "cc")
+        );
     }
 }

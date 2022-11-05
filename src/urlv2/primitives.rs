@@ -1,10 +1,14 @@
 use std::ops::Range;
 
 use crate::parse::{
-    comb::{either, either3, either5, either_of, map, map_bool, map_option, result, ret},
-    sequence::{serial, serial3},
+    comb::{
+        either, either3, either5, either_of, map, map_bool, map_option, map_result,
+        map_result_halts, ret,
+    },
+    repeat::{repeat_any, repeat_some},
+    sequence::{preceded, serial, serial3},
     str::{char, digit, peek_char, pop, take, take_while},
-    tools::accept_limit,
+    tools::{accept_limit, halt},
     Parse,
 };
 
@@ -56,6 +60,7 @@ pub fn unreserved(i: &str) -> Parse<&str, &str> {
     take_while(|c| c.is_ascii_alphanumeric() || is_ucschar(c) || "-._~".contains(c))(i)
 }
 
+// Parses exactly one
 fn digit_within(range: Range<u8>) -> impl Fn(&str) -> Parse<&str, u8> {
     move |i: &str| map_bool(digit, |&d| d >= range.start && d <= range.end)(i)
 }
@@ -110,9 +115,23 @@ pub fn url_end(i: &str) -> Parse<&str, ()> {
 
 // pub fn hex_digit()
 
-// pub fn percent_encoded(i: &str) -> Parse<&str, char> {
-// preceded(char('%'),
-// }
+pub fn percent_encoded(i: &str) -> Parse<&str, String> {
+    map_result_halts(
+        repeat_some(preceded(
+            char('%'),
+            halt(map_result(
+                take(2),
+                |h| u8::from_str_radix(h, 16),
+                "invalid hex digits",
+            )),
+        )),
+        |s| -> Result<String, std::str::Utf8Error> {
+            println!("s: {:?}", s);
+            Ok(std::str::from_utf8(&s)?.to_string())
+        },
+        "unvalid unicode sequence",
+    )(i)
+}
 
 #[cfg(test)]
 mod tests {
@@ -128,8 +147,8 @@ mod tests {
         assert_eq!(digit_within(2..5)("45"), Parse::Success(4, "5"));
         assert_eq!(digit_within(2..5)("4"), Parse::Success(4, ""));
         assert_eq!(digit_within(0..1)("0"), Parse::Success(0, ""));
-        assert!(digit_within(2..5)("13").is_err());
-        assert!(digit_within(0..5)("6").is_err());
+        assert!(digit_within(2..5)("13").is_retreat());
+        assert!(digit_within(0..5)("6").is_retreat());
     }
     #[test]
     fn test_dec_octet() {
@@ -146,5 +165,30 @@ mod tests {
         assert_eq!(dec_octet("255"), Parse::Success(255, ""));
         assert_eq!(dec_octet("256"), Parse::Success(25, "6"));
         assert_eq!(dec_octet("2:90"), Parse::Success(2, ":90"));
+    }
+    #[test]
+    fn test_percent_encoded() {
+        assert_eq!(
+            percent_encoded("%20 "),
+            Parse::Success(" ".to_string(), " ")
+        );
+        assert_eq!(
+            percent_encoded("%C2%A8 "),
+            Parse::Success("¨".to_string(), " ")
+        );
+        assert_eq!(
+            percent_encoded("%C2%A8"),
+            Parse::Limit(Some("¨".to_string()), "")
+        );
+        assert!(percent_encoded("%C2").is_halt());
+        //assert_eq!(percent_encoded("%C2"), Parse::Success('¨', ""));
+
+        let input1 = "%C2%A8%C3%92%C2%A8%C3%94%E2%80%A1%EF%AC%82%E2%80%BA%EF%AC%81%C2%B0%C2%B0%EF%AC%81%EF%AC%81%E2%88%8F%CB%9D%CB%87%C3%8E%C3%8E%C3%93 ";
+        let expected1 = "¨Ò¨Ô‡ﬂ›ﬁ°°ﬁﬁ∏˝ˇÎÎÓ".to_string();
+        assert_eq!(percent_encoded(input1), Parse::Success(expected1, " "));
+
+        let input2 = "%20%20%CB%9A ";
+        let expected2 = "  ˚".to_string();
+        assert_eq!(percent_encoded(input2), Parse::Success(expected2, " "));
     }
 }

@@ -139,7 +139,7 @@ where
     }
 }
 
-pub fn result<'l, I, O, P, F, M, E>(
+pub fn map_result<'l, I, O, P, F, M, E>(
     parser: P,
     func: F,
     label: &'l str,
@@ -154,9 +154,38 @@ where
             Ok(m) => Parse::Success(m, sur),
             Err(_) => Parse::Retreat(format!("Result error {}", label)),
         },
+        Parse::Limit(Some(res), sur) => match func(res) {
+            Ok(m) => Parse::Limit(Some(m), sur),
+            Err(_) => Parse::Retreat(format!("Result error {}", label)),
+        },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(_, _) => Parse::Limit(None, i),
+        Parse::Limit(None, _) => Parse::Limit(None, i),
+    }
+}
+
+pub fn map_result_halts<'l, I, O, P, F, M, E>(
+    parser: P,
+    func: F,
+    label: &'l str,
+) -> impl Fn(I) -> Parse<I, M> + '_
+where
+    P: Fn(I) -> Parse<I, O> + 'l,
+    F: Fn(O) -> Result<M, E> + 'l,
+    I: Copy,
+{
+    move |i: I| match parser(i) {
+        Parse::Success(res, sur) => match func(res) {
+            Ok(m) => Parse::Success(m, sur),
+            Err(_) => Parse::Halt(format!("Result error {}", label)),
+        },
+        Parse::Limit(Some(res), sur) => match func(res) {
+            Ok(m) => Parse::Limit(Some(m), sur),
+            Err(_) => Parse::Halt(format!("Result error {}", label)),
+        },
+        Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
+        Parse::Halt(h) => Parse::Halt(h),
+        Parse::Limit(None, _) => Parse::Limit(None, i),
     }
 }
 
@@ -192,28 +221,6 @@ where
             false => Parse::Retreat(format!("Map bool error")),
         },
         Parse::Retreat(_) => Parse::Retreat("Result error".to_string()),
-        Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(_, _) => Parse::Limit(None, i),
-    }
-}
-
-pub fn result_halt<'a, I, O, P, F, M>(
-    parser: P,
-    func: F,
-    label: &'a str,
-) -> impl Fn(I) -> Parse<I, M> + 'a
-where
-    P: Fn(I) -> Parse<I, O> + 'a,
-    F: Fn(O) -> Result<M, ()> + 'a,
-    O: std::fmt::Display + Copy,
-    I: Copy,
-{
-    move |i: I| match parser(i) {
-        Parse::Success(res, sur) => match func(res) {
-            Ok(m) => Parse::Success(m, sur),
-            Err(_) => Parse::Halt(format!("Illegal {}: {}", label, res)),
-        },
-        Parse::Retreat(r) => Parse::Retreat(format!("retreat from {r}")),
         Parse::Halt(h) => Parse::Halt(h),
         Parse::Limit(_, _) => Parse::Limit(None, i),
     }

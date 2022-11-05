@@ -148,8 +148,8 @@ mod tests {
     fn test_target_asterix() {
         assert_eq!(Target::parse("*"), Parse::Success(Target::Asterix, ""));
         assert_eq!(Target::parse("* "), Parse::Success(Target::Asterix, " "));
-        println!("{:?}", Target::parse("*s").is_err());
-        assert!(Target::parse("*s").is_err());
+        println!("{:?}", Target::parse("*s").is_retreat());
+        assert!(Target::parse("*s").is_retreat());
     }
 
     #[test]
@@ -163,7 +163,7 @@ mod tests {
             Scheme::parse("N+3 "),
             Parse::Success(Scheme("n+3".to_string()), " ")
         );
-        assert!(Scheme::parse(" N+3 ").is_err());
+        assert!(Scheme::parse(" N+3 ").is_retreat());
     }
 
     #[test]
@@ -176,9 +176,9 @@ mod tests {
             IPv4Address::parse("0.23.100.255"),
             Parse::Success(IPv4Address(0, 23, 100, 255), "")
         );
-        assert!(IPv4Address::parse("0.23.300.29").is_err());
-        assert!(IPv4Address::parse("0.23.3").is_err());
-        assert!(IPv4Address::parse("340.23.3.0").is_err());
-        assert!(IPv4Address::parse("14023.3.0").is_err());
+        assert!(IPv4Address::parse("0.23.300.29").is_retreat());
+        assert!(IPv4Address::parse("0.23.3").is_limit());
+        assert!(IPv4Address::parse("340.23.3.0").is_retreat());
+        assert!(IPv4Address::parse("14023.3.0").is_retreat());
     }
 }

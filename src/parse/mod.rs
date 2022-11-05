@@ -13,12 +13,25 @@ pub enum Parse<I, O> {
 }
 
 impl<I, O> Parse<I, O> {
-    pub fn is_err(&self) -> bool {
-        match self {
-            Self::Success(_, _) => false,
-            Parse::Retreat(_) => true,
-            Parse::Halt(_) => true,
-            Parse::Limit(_, _) => true,
+    pub fn is_retreat(&self) -> bool {
+        if let Parse::Retreat(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+    pub fn is_halt(&self) -> bool {
+        if let Parse::Halt(_) = self {
+            true
+        } else {
+            false
+        }
+    }
+    pub fn is_limit(&self) -> bool {
+        if let Parse::Limit(_, _) = self {
+            true
+        } else {
+            false
         }
     }
 }

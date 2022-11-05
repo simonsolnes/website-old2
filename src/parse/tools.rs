@@ -13,14 +13,14 @@ where
 }
 
 /// Halts the parsing if the parser retreats
-pub fn halt<'l, I, O, P>(label: &'l str, p: P) -> impl Fn(I) -> Parse<I, O> + 'l
+pub fn halt<I, O, P>(p: P) -> impl Fn(I) -> Parse<I, O>
 where
-    P: Fn(I) -> Parse<I, O> + 'l,
+    P: Fn(I) -> Parse<I, O>,
     I: Display + Copy,
 {
     move |i: I| match p(i) {
         s @ Parse::Success(_, _) => s,
-        Parse::Retreat(r) => Parse::Halt(format!("Halted {label}, for {i} ({r})")),
+        Parse::Retreat(r) => Parse::Halt(format!("Halted {r}, for {i}")),
         Parse::Halt(h) => Parse::Halt(h),
         Parse::Limit(r, s) => Parse::Limit(r, s),
     }
@@ -35,9 +35,11 @@ where
         s @ Parse::Success(_, _) => s,
         Parse::Retreat(r) => Parse::Retreat(r),
         Parse::Halt(h) => Parse::Halt(h),
-        Parse::Limit(r, s) => Parse::Success(
-            r.expect("not to use accept limit on a parser that isnt able to result on a limit"),
-            s,
-        ),
+        Parse::Limit(r, s) => match r {
+            Some(r) => Parse::Success(r, s),
+            None => Parse::Retreat(
+                "not to use accept limit on a parser that isnt able to Some on a limit".to_string(),
+            ),
+        },
     }
 }
