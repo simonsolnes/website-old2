@@ -46,11 +46,15 @@ struct URL {}
 #[derive(Debug)]
 struct Scheme(String);
 
+#[derive(PartialEq, Debug)]
 struct Authority {
-    userinfo: Option<String>,
-    host: String,
-    port: Option<u16>,
+    user_info: Option<UserInfo>,
+    host: Host,
+    port: Option<Port>,
 }
+
+#[derive(PartialEq, Debug)]
+struct Port(u16);
 
 #[derive(PartialEq, Debug)]
 struct HttpUrl {
@@ -95,24 +99,38 @@ impl PartialEq for Scheme {
 
 mod parsers {
 
-    use crate::parse::comb::{either, either3, either4, ret};
+    use crate::parse::comb::{either, either3, either4, optional, ret};
     use crate::parse::repeat::repeat_some;
-    use crate::parse::sequence::{serial, serial3, serial4, terminated};
+    use crate::parse::sequence::{preceded, serial, serial3, serial4, terminated};
     use crate::parse::str::{alpha_char, char, peek_char, take_while};
     use crate::parse::{comb::map, Parse};
 
-    use super::primitives::{self, dec_octet, percent_encoded, sub_delim, unreserved};
+    use super::primitives::{self, dec_hextet, dec_octet, percent_encoded, sub_delim, unreserved};
     use super::{
-        Authority, Host, IPLiteral, IPv4Address, Parser, RegistrationName, Scheme, Target, UserInfo,
+        Authority, Host, IPLiteral, IPv4Address, Parser, Port, RegistrationName, Scheme, Target,
+        UserInfo,
     };
 
-    impl Parser for Host {
+    impl Parser for Authority {
         fn parse(i: &str) -> Parse<&str, Self> {
-            either3(
-                map(IPLiteral::parse, |r| Host::Literal(r)),
-                map(IPv4Address::parse, |r| Host::IPv4(r)),
-                map(RegistrationName::parse, |r| Host::Name(r)),
+            map(
+                serial3(
+                    optional(terminated(UserInfo::parse, char('@'))),
+                    Host::parse,
+                    optional(preceded(char(':'), Port::parse)),
+                ),
+                |(user_info, host, port)| Authority {
+                    user_info,
+                    host,
+                    port,
+                },
             )(i)
+        }
+    }
+
+    impl Parser for Port {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            map(dec_hextet, |r| Port(r))(i)
         }
     }
 
@@ -136,15 +154,6 @@ mod parsers {
         }
     }
 
-    impl Parser for Authority {
-        fn parse(i: &str) -> Parse<&str, Self> {
-            map(unreserved, |r| Self {
-                userinfo: Some(r.to_string()),
-                host: "".to_string(),
-                port: None,
-            })(i)
-        }
-    }
     impl Parser for IPv4Address {
         fn parse(i: &str) -> Parse<&str, Self> {
             map(
@@ -186,6 +195,15 @@ mod parsers {
                     map(sub_delim, |c| c.to_string()),
                 )),
                 |r| RegistrationName(r.join("")),
+            )(i)
+        }
+    }
+    impl Parser for Host {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            either3(
+                map(IPLiteral::parse, |r| Host::Literal(r)),
+                map(IPv4Address::parse, |r| Host::IPv4(r)),
+                map(RegistrationName::parse, |r| Host::Name(r)),
             )(i)
         }
     }
@@ -259,6 +277,53 @@ mod parsers {
             assert_eq!(
                 Host::parse("youtube.com/"),
                 Parse::Success(Host::Name(RegistrationName("youtube.com".to_string())), "/")
+            );
+        }
+        #[test]
+        fn test_authority() {
+            assert_eq!(
+                Authority::parse("youtube.com/"),
+                Parse::Success(
+                    Authority {
+                        user_info: None,
+                        host: Host::Name(RegistrationName("youtube.com".to_string())),
+                        port: None,
+                    },
+                    "/"
+                )
+            );
+            assert_eq!(
+                Authority::parse("a@youtube.com:3"),
+                Parse::Limit(
+                    Some(Authority {
+                        user_info: Some(UserInfo("a".to_string())),
+                        host: Host::Name(RegistrationName("youtube.com".to_string())),
+                        port: Some(Port(3)),
+                    }),
+                    ""
+                )
+            );
+            assert_eq!(
+                Authority::parse("a:b@2.3.4.255"),
+                Parse::Limit(
+                    Some(Authority {
+                        user_info: Some(UserInfo("a:b".to_string())),
+                        host: Host::IPv4(IPv4Address(2, 3, 4, 255)),
+                        port: None,
+                    }),
+                    ""
+                )
+            );
+            assert_eq!(
+                Authority::parse("a:b@2.3.4.255:65530"),
+                Parse::Success(
+                    Authority {
+                        user_info: Some(UserInfo("a:b".to_string())),
+                        host: Host::IPv4(IPv4Address(2, 3, 4, 255)),
+                        port: Some(Port(65530)),
+                    },
+                    ""
+                )
             );
         }
     }
