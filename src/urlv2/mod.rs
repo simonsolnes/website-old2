@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::parse::Parse;
 
 use self::primitives::unreserved;
-mod primitives;
+pub mod primitives;
 
 /// Absolute URIs always begins with a sceme followed by a colon
 
@@ -61,14 +61,22 @@ struct HttpUrl {
 struct URI {}
 
 #[derive(PartialEq, Debug)]
-struct Host {}
+enum Host {
+    Literal(IPLiteral),
+    IPv4(IPv4Address),
+    Name(RegistrationName),
+}
+
+#[derive(PartialEq, Debug)]
+pub struct UserInfo(String);
+
+#[derive(PartialEq, Debug)]
+pub struct RegistrationName(String);
 
 #[derive(PartialEq, Debug)]
 struct IPv4Address(u8, u8, u8, u8);
 
 #[derive(PartialEq, Debug)]
-pub struct UserInfo(String);
-
 enum IPLiteral {
     IPv6Address,
     IPvFuture,
@@ -87,14 +95,26 @@ impl PartialEq for Scheme {
 
 mod parsers {
 
-    use crate::parse::comb::{either, either3};
+    use crate::parse::comb::{either, either3, either4, ret};
     use crate::parse::repeat::repeat_some;
     use crate::parse::sequence::{serial, serial3, serial4, terminated};
     use crate::parse::str::{alpha_char, char, peek_char, take_while};
     use crate::parse::{comb::map, Parse};
 
     use super::primitives::{self, dec_octet, percent_encoded, sub_delim, unreserved};
-    use super::{Authority, IPLiteral, IPv4Address, Parser, Scheme, Target, UserInfo};
+    use super::{
+        Authority, Host, IPLiteral, IPv4Address, Parser, RegistrationName, Scheme, Target, UserInfo,
+    };
+
+    impl Parser for Host {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            either3(
+                map(IPLiteral::parse, |r| Host::Literal(r)),
+                map(IPv4Address::parse, |r| Host::IPv4(r)),
+                map(RegistrationName::parse, |r| Host::Name(r)),
+            )(i)
+        }
+    }
 
     impl Parser for Target {
         fn parse(i: &str) -> Parse<&str, Self> {
@@ -146,12 +166,26 @@ mod parsers {
     impl Parser for UserInfo {
         fn parse(i: &str) -> Parse<&str, Self> {
             map(
+                repeat_some(either4(
+                    map(unreserved, |s| s.to_string()),
+                    percent_encoded,
+                    map(sub_delim, |c| c.to_string()),
+                    map(char(':'), |c| c.to_string()),
+                )),
+                |r| UserInfo(r.join("")),
+            )(i)
+        }
+    }
+
+    impl Parser for RegistrationName {
+        fn parse(i: &str) -> Parse<&str, Self> {
+            map(
                 repeat_some(either3(
                     map(unreserved, |s| s.to_string()),
                     percent_encoded,
                     map(sub_delim, |c| c.to_string()),
                 )),
-                |r| UserInfo(r.join("")),
+                |r| RegistrationName(r.join("")),
             )(i)
         }
     }
@@ -186,7 +220,7 @@ mod parsers {
         fn test_ipv4_address() {
             assert_eq!(
                 IPv4Address::parse("1.1.1.1"),
-                Parse::Success(IPv4Address(1, 1, 1, 1), "")
+                Parse::Limit(Some(IPv4Address(1, 1, 1, 1)), "")
             );
             assert_eq!(
                 IPv4Address::parse("0.23.100.255"),
@@ -208,8 +242,23 @@ mod parsers {
                 Parse::Success(UserInfo("he!llo".to_string()), " ")
             );
             assert_eq!(
-                UserInfo::parse("he!l%20lo "),
-                Parse::Success(UserInfo("he!l lo".to_string()), " ")
+                UserInfo::parse("he:!l%20lo "),
+                Parse::Success(UserInfo("he:!l lo".to_string()), " ")
+            );
+        }
+        #[test]
+        fn test_host() {
+            assert_eq!(
+                Host::parse("2.34.2.5"),
+                Parse::Limit(Some(Host::IPv4(IPv4Address(2, 34, 2, 5))), "")
+            );
+            assert_eq!(
+                Host::parse("2.34.2.234"),
+                Parse::Success(Host::IPv4(IPv4Address(2, 34, 2, 234)), "")
+            );
+            assert_eq!(
+                Host::parse("youtube.com/"),
+                Parse::Success(Host::Name(RegistrationName("youtube.com".to_string())), "/")
             );
         }
     }

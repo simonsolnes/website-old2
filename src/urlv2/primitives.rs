@@ -155,10 +155,11 @@ mod tests {
     #[test]
     fn test_dec_octet() {
         assert_eq!(dec_octet("0"), Parse::Success(0, ""));
-        assert_eq!(dec_octet("10"), Parse::Success(10, ""));
+        assert_eq!(dec_octet("10"), Parse::Limit(Some(10), ""));
         assert_eq!(dec_octet("00"), Parse::Success(0, "0"));
         assert_eq!(dec_octet("245"), Parse::Success(245, ""));
-        assert_eq!(dec_octet("24"), Parse::Success(24, ""));
+        assert_eq!(dec_octet("24"), Parse::Limit(Some(24), ""));
+        assert_eq!(dec_octet("24 "), Parse::Success(24, " "));
         assert_eq!(dec_octet("260"), Parse::Success(26, "0"));
         assert_eq!(dec_octet("250"), Parse::Success(250, ""));
         assert_eq!(dec_octet("249"), Parse::Success(249, ""));

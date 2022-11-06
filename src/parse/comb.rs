@@ -1,3 +1,6 @@
+use std::fmt::Debug;
+use std::fmt::Display;
+
 use super::Parse;
 
 // pub fn not<P, I, O>(p: P) -> impl Fn(I) -> Parse<I, ()>
@@ -57,13 +60,16 @@ pub fn either<I, O, P1, P2>(p1: P1, p2: P2) -> impl Fn(I) -> Parse<I, O>
 where
     P1: Fn(I) -> Parse<I, O>,
     P2: Fn(I) -> Parse<I, O>,
-    I: Copy,
+    I: Copy + PartialOrd + Display,
+    O: Debug,
 {
     move |i: I| match p1(i) {
-        s @ Parse::Success(_, _) => s,
         Parse::Retreat(_) => p2(i),
-        h @ Parse::Halt(_) => h,
-        Parse::Limit(r, s) => p2(i),
+        Parse::Limit(None, _) => match p2(i) {
+            Parse::Success(r, s) => Parse::Limit(Some(r), s),
+            a @ _ => a,
+        },
+        a @ _ => a,
     }
 }
 pub fn either3<I, O, P1, P2, P3>(p1: P1, p2: P2, p3: P3) -> impl Fn(I) -> Parse<I, O>
@@ -71,7 +77,8 @@ where
     P1: Fn(I) -> Parse<I, O>,
     P2: Fn(I) -> Parse<I, O>,
     P3: Fn(I) -> Parse<I, O>,
-    I: Copy,
+    I: Copy + PartialOrd + Display,
+    O: Debug,
 {
     either(either(p1, p2), p3)
 }
@@ -81,7 +88,8 @@ where
     P2: Fn(I) -> Parse<I, O>,
     P3: Fn(I) -> Parse<I, O>,
     P4: Fn(I) -> Parse<I, O>,
-    I: Copy,
+    I: Copy + PartialOrd + Display,
+    O: Debug,
 {
     either(either(p1, p2), either(p3, p4))
 }
@@ -98,7 +106,8 @@ where
     P3: Fn(I) -> Parse<I, O>,
     P4: Fn(I) -> Parse<I, O>,
     P5: Fn(I) -> Parse<I, O>,
-    I: Copy,
+    I: Copy + PartialOrd + Display,
+    O: Debug,
 {
     either(either(p1, p2), either3(p3, p4, p5))
 }
@@ -250,3 +259,42 @@ where
 // If parser succeeds,
 // pub fn resolve<P>(parser: P, value: V) {
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::super::*;
+    use super::*;
+
+    #[test]
+    fn test_either() {
+        use self::str::{literal, some_chars_of};
+        assert_eq!(
+            either(literal("hei"), literal("hallo"))("hei"),
+            Parse::Success("hei", "")
+        );
+        assert_eq!(
+            either(literal("hei"), literal("hallo"))("hallo"),
+            Parse::Success("hallo", "")
+        );
+        assert_eq!(
+            either(some_chars_of("ab"), literal("hallo"))("hallo"),
+            Parse::Success("hallo", "")
+        );
+        assert_eq!(
+            either(some_chars_of("ab"), literal("hallo"))("ababs"),
+            Parse::Success("abab", "s")
+        );
+        assert_eq!(
+            either(literal("hallo"), some_chars_of("ab"))("ababs"),
+            Parse::Success("abab", "s")
+        );
+        assert_eq!(
+            either(some_chars_of("ab"), literal("hallo"))("abab"),
+            Parse::Limit(Some("abab"), "")
+        );
+        assert_eq!(
+            either(literal("hallo"), some_chars_of("ab"))("abab"),
+            Parse::Limit(Some("abab"), "")
+        );
+    }
+}

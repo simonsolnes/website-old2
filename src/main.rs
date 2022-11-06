@@ -7,6 +7,7 @@ mod json;
 mod parse;
 mod url;
 mod urlv2;
+use urlv2::primitives::dec_octet;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -21,7 +22,8 @@ pub struct Request<'a> {
 }
 
 fn main() {
-    println!("{:?}", literal("fisk")("fiske"));
+    println!("{:?}", dec_octet("10"));
+
     //serve();
 }
 
