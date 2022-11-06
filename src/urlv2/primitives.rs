@@ -64,7 +64,7 @@ pub fn unreserved(i: &str) -> Parse<&str, &str> {
     take_some_while(|c| c.is_ascii_alphanumeric() || is_ucschar(c) || "-._~".contains(c))(i)
 }
 
-// Parses exactly one
+// Parses exactly one digit within the given range
 fn digit_within(range: Range<u8>) -> impl Fn(&str) -> Parse<&str, u8> {
     move |i: &str| map_bool(digit, |&d| d >= range.start && d <= range.end)(i)
 }
@@ -89,6 +89,41 @@ pub fn dec_octet(input: &str) -> Parse<&str, u8> {
         }),
         map(digit_within(0..9), |a| a),
     )(input)
+}
+
+/// Parse number between 0 and 65535, with no leading 0 allowed
+pub fn dec_hextet(input: &str) -> Parse<&str, u16> {
+    let mut iter = input.char_indices();
+
+    if let Some((i, d)) = iter.next() {
+        if d == '0' {
+            Parse::Success(0u16, &input[i + d.len_utf8()..])
+        } else if d.is_ascii_digit() {
+            let mut result = u16::from_str_radix(&input[..i + d.len_utf8()], 10).unwrap();
+            let mut last_i = i;
+            while let Some((i, d)) = iter.next() {
+                if d.is_ascii_digit() {
+                    if let Ok(new) = u16::from_str_radix(&input[..i + d.len_utf8()], 10) {
+                        result = new;
+                        last_i = i;
+                    } else {
+                        return Parse::Success(result, &input[last_i + d.len_utf8()..]);
+                    }
+                } else {
+                    return Parse::Success(result, &input[last_i + d.len_utf8()..]);
+                }
+            }
+            if (result as u32) * 10 > (u16::MAX as u32) {
+                Parse::Success(result, &input[last_i + d.len_utf8()..])
+            } else {
+                Parse::Limit(Some(result), &input[last_i + d.len_utf8()..])
+            }
+        } else {
+            Parse::Retreat("No digit found".to_string())
+        }
+    } else {
+        Parse::Retreat("No digit found".to_string())
+    }
 }
 
 /// Returns true if c is contained in ascii and in either of these:
@@ -155,6 +190,7 @@ mod tests {
     #[test]
     fn test_dec_octet() {
         assert_eq!(dec_octet("0"), Parse::Success(0, ""));
+        assert!(dec_octet("r").is_retreat());
         assert_eq!(dec_octet("10"), Parse::Limit(Some(10), ""));
         assert_eq!(dec_octet("00"), Parse::Success(0, "0"));
         assert_eq!(dec_octet("245"), Parse::Success(245, ""));
@@ -168,6 +204,16 @@ mod tests {
         assert_eq!(dec_octet("255"), Parse::Success(255, ""));
         assert_eq!(dec_octet("256"), Parse::Success(25, "6"));
         assert_eq!(dec_octet("2:90"), Parse::Success(2, ":90"));
+    }
+    #[test]
+    fn test_dec_hextet() {
+        assert!(dec_hextet("m3").is_retreat());
+        assert_eq!(dec_hextet("0"), Parse::Success(0, ""));
+        assert_eq!(dec_hextet("0m"), Parse::Success(0, "m"));
+        assert_eq!(dec_hextet("43"), Parse::Limit(Some(43), ""));
+        assert_eq!(dec_hextet("22f"), Parse::Success(22, "f"));
+        assert_eq!(dec_hextet("65535"), Parse::Success(65535, ""));
+        assert_eq!(dec_hextet("65536"), Parse::Success(6553, "6"));
     }
     #[test]
     fn test_percent_encoded() {
