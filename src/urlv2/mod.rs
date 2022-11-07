@@ -5,32 +5,15 @@ use crate::parse::Parse;
 use self::primitives::unreserved;
 pub mod primitives;
 
-/// Absolute URIs always begins with a sceme followed by a colon
-
-/// Uri syntax components
-/// https://www.rfc-editor.org/rfc/rfc3986#section-3
-/// https://www.w3.org/International/wiki/IRIStatus
-///
-///                  host      port
-///               /         \ /  \
-///         foo://example.com:8042/over/there?name=ferret#nose
-///         \_/   \______________/\_________/ \_________/ \__/
-///          |           |            |            |        |
-///       scheme     authority   abs_path        query   fragment
-///          |   _____________________|__
-///         / \ /                        \
-///         urn:example:animal:ferret:nose
-///
-
 type Path = Vec<String>;
 type Query = HashMap<String, String>;
 
 /// The target in a HTTP request can be any of these types
 #[derive(PartialEq, Debug)]
 enum Target {
-    Origin(Absolute<Path>, Option<Query>),
+    // TODO Path
     Absolute(URI),
-    //Authority(Host),
+    Connect(Authority),
     Asterix,
 }
 
@@ -106,10 +89,7 @@ mod parsers {
     use crate::parse::{comb::map, Parse};
 
     use super::primitives::{self, dec_hextet, dec_octet, percent_encoded, sub_delim, unreserved};
-    use super::{
-        Authority, Host, IPLiteral, IPv4Address, Parser, Port, RegistrationName, Scheme, Target,
-        UserInfo,
-    };
+    use super::*;
 
     impl Parser for Authority {
         fn parse(i: &str) -> Parse<&str, Self> {
@@ -136,7 +116,14 @@ mod parsers {
 
     impl Parser for Target {
         fn parse(i: &str) -> Parse<&str, Self> {
-            terminated(map(char('*'), |_| Self::Asterix), primitives::url_end)(i)
+            terminated(
+                either(
+                    map(char('*'), |_| Self::Asterix),
+                    map(Authority::parse, |a| Self::Connect(a)),
+                    //map(URI::parse, |u| Self::Absolute(URI)),
+                ),
+                primitives::url_end,
+            )(i)
         }
     }
 
@@ -208,15 +195,74 @@ mod parsers {
         }
     }
 
+    // impl Parser for Relative<Path> {
+    //     fn parse(i: &str) -> Parse<&str, Self> {
+    //         separated_items(char('/'),
+    //     }
+    // }
+
     #[cfg(test)]
     mod tests {
+
+        // #[test]
+        // fn test_relative_path() {
+        //     assert_eq!(
+        //         Relative::<Path>::parse(""),
+        //         Parse::Limit(Some(Relative(vec![])), "")
+        //     );
+        //     assert_eq!(
+        //         Relative::<Path>::parse("hello"),
+        //         Parse::Limit(Some(Relative(vec!["hello".to_owned()])), "")
+        //     );
+        //     assert_eq!(
+        //         Relative::<Path>::parse("hello/there"),
+        //         Parse::Limit(
+        //             Some(Relative(vec!["hello".to_owned(), "there".to_owned()])),
+        //             ""
+        //         )
+        //     );
+        //     assert_eq!(
+        //         Relative::<Path>::parse("hello/there "),
+        //         Parse::Success(Relative(vec!["hello".to_owned(), "there".to_owned()]), " ")
+        //     );
+        //     assert_eq!(
+        //         Relative::<Path>::parse("hello/there/?s "),
+        //         Parse::Success(
+        //             Relative(vec!["hello".to_owned(), "there".to_owned()]),
+        //             "?s ",
+        //         )
+        //     );
+        //     assert_eq!(
+        //         Relative::<Path>::parse("hello/there/"),
+        //         Parse::Success(Relative(vec!["hello".to_owned(), "there".to_owned()]), "")
+        //     );
+        //     assert!(Relative::<Path>::parse("/").is_retreat());
+        // }
+        /*
+        #[test]
+        fn test_absolute_path() {
+            assert!(Absolute::<Path>::parse("hello").is_err());
+            assert_eq!(
+                Absolute::<Path>::parse("/hello").unwrap(),
+                Absolute(vec!["hello".to_owned()])
+            );
+            assert_eq!(
+                Absolute::<Path>::parse("/hello/there").unwrap(),
+                Absolute(vec!["hello".to_owned(), "there".to_owned()])
+            );
+            assert_eq!(
+                Absolute::<Path>::parse("/hello/there/").unwrap(),
+                Absolute(vec!["hello".to_owned(), "there".to_owned()])
+            );
+        }
+        */
 
         use super::*;
         #[test]
         fn test_target_asterix() {
             assert_eq!(Target::parse("*"), Parse::Success(Target::Asterix, ""));
             assert_eq!(Target::parse("* "), Parse::Success(Target::Asterix, " "));
-            println!("{:?}", Target::parse("*s").is_retreat());
+            println!("is: {:?}", Target::parse("*s"));
             assert!(Target::parse("*s").is_retreat());
         }
 
