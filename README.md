@@ -3,7 +3,7 @@ The server hosting my website.
 
 It is a work in progress, and my first project in Rust.
 
-## <kbd>hello</kbd>HTTP-parser
+## HTTP-parser
 The parser is an incremental parser,
 meaning that the data can be acted upon during parsing and allows for absurd sizes in the HTTP header and body.
 
